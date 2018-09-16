@@ -13,9 +13,13 @@ You must have several tools installed in order to use this template:
 - `wasm-opt`: Clone [https://github.com/WebAssembly/binaryen](binaryen) and follow install instructions there
 - NodeJS and [Yarn](https://yarnpkg.com/en/)
 
+### Docker
+
+If you prefer, you can build sketches via docker to avoid manually installing all of the dependencies. Simply run the `docker_build_all.sh` script. Please note that the Docker image is very big (>1GB).
+
 ## Building Sketches
 
-After you've copied the template to a new subdirectory, all you have to do to build the sketch is to install dependencies by running `yarn` in the project root followed by running the `build_all.sh` script. This will handle compiling the Rust project into WebAssembly, running `wasm-bindgen-cli` to generate TypeScript bindings, optimizing the generated Wasm binary, linking it into the frontend, and generating a static site output in the `/dist` directory. You can then serve that directory with any simple HTTP server (such as `serve` (`yarn install serve`, `serve dist`)) and view it in a web browser.
+After you've copied the template to a new subdirectory, all you have to do to build the sketch is to install dependencies by running `yarn` in the project root followed by running the `build_all.sh` (`docker_build_all.sh` if you're using Docker) script. This will handle compiling the Rust project into WebAssembly, running `wasm-bindgen-cli` to generate TypeScript bindings, optimizing the generated Wasm binary, linking it into the frontend, and generating a static site output in the `/dist` directory. You can then serve that directory with any simple HTTP server (such as `serve` (`yarn install serve`, `serve dist`)) and view it in a web browser.
 
 ### Common Library
 

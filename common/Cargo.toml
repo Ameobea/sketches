@@ -1,0 +1,9 @@
+[package]
+name = "common"
+version = "0.1.0"
+authors = ["Casey Primozic <me@ameo.link>"]
+edition = "2018"
+
+[dependencies]
+uuid = "0.7.1"
+wasm-bindgen = "0.2.21"

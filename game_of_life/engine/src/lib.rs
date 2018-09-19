@@ -1,4 +1,4 @@
-#![feature(box_syntax, const_transmute)]
+#![feature(box_syntax, nll)]
 
 extern crate common;
 extern crate wasm_bindgen;
@@ -15,15 +15,17 @@ extern "C" {
     pub fn canvasRender(ptr: *const u8);
 }
 
-const BOARD_HEIGHT: usize = 50;
-const BOARD_WIDTH: usize = 50;
+const BOARD_HEIGHT: usize = 250;
+const BOARD_WIDTH: usize = 250;
 const CELL_COUNT: usize = BOARD_HEIGHT * BOARD_WIDTH;
+const CANVAS_SCALE_FACTOR: usize = 3;
+const CANVAS_SIZE: usize = CELL_COUNT * 4 * CANVAS_SCALE_FACTOR * CANVAS_SCALE_FACTOR;
 
 #[repr(u32)]
 #[derive(Clone, Copy, PartialEq)]
 enum Cell {
-    Dead = unsafe { mem::transmute::<(u8, u8, u8, u8), u32>((0, 0, 0, 255)) },
-    Alive = unsafe { mem::transmute::<(u8, u8, u8, u8), u32>((255, 255, 255, 255)) },
+    Dead,
+    Alive,
 }
 
 impl Cell {
@@ -37,10 +39,12 @@ struct Board(pub Box<[Cell; CELL_COUNT]>);
 impl Board {
     pub fn new() -> Self {
         let mut cells = [Cell::Dead; CELL_COUNT];
-        cells[0] = Cell::Alive;
-        cells[1] = Cell::Alive;
-        cells[BOARD_WIDTH] = Cell::Alive;
-        cells[BOARD_WIDTH + 1] = Cell::Alive;
+        // Initialize cells randomly
+        for i in 0..CELL_COUNT {
+            if common::math_random() > 0.5 {
+                cells[i] = Cell::Alive;
+            }
+        }
         Board(box cells)
     }
 
@@ -58,14 +62,60 @@ struct State {
     pub cur_buf_1: bool,
     pub buf1: Board,
     pub buf2: Board,
+    pub canvas_buf: Box<[u8; CANVAS_SIZE]>,
+}
+
+#[inline]
+fn get_coord(index: usize) -> (isize, isize) {
+    let x = index % BOARD_WIDTH;
+    let y = (index - x) / BOARD_WIDTH;
+    return (x as isize, y as isize);
 }
 
 impl State {
     pub fn new() -> Self {
+        let mut canvas_buf = box [0u8; CANVAS_SIZE];
+
+        // Set transparency to 1 for all pixels
+        for i in 0..CANVAS_SIZE {
+            if i % 4 == 3 {
+                canvas_buf[i] = 255;
+            }
+        }
+
+        // Draw initial canvas buf
+        let buf1 = Board::new();
+        for i in 0..CELL_COUNT {
+            if buf1.0[i] == Cell::Alive {
+                State::draw_canvas_cell(&mut canvas_buf, i, Cell::Alive);
+            }
+        }
+
         State {
             cur_buf_1: true,
-            buf1: Board::new(),
+            buf1,
             buf2: Board::new(),
+            canvas_buf: canvas_buf,
+        }
+    }
+
+    pub fn draw_canvas_cell(canvas_buf: &mut [u8; CANVAS_SIZE], i: usize, state: Cell) {
+        let (x, y) = get_coord(i);
+        let write_val = if state == Cell::Alive { 255 } else { 0 };
+
+        let px_per_row = BOARD_WIDTH * CANVAS_SCALE_FACTOR * 4;
+        let px_per_cell_row = px_per_row * CANVAS_SCALE_FACTOR;
+
+        let start_ix = (px_per_cell_row * y as usize) + (4 * x as usize * CANVAS_SCALE_FACTOR);
+        for row in 0..CANVAS_SCALE_FACTOR {
+            let cell_row_start_index = start_ix + (row * px_per_row);
+            for col in 0..CANVAS_SCALE_FACTOR {
+                let cell_col_start_index = cell_row_start_index + (col * 4);
+                for i in 0..3 {
+                    let pixel_start_index = cell_col_start_index + i;
+                    canvas_buf[pixel_start_index] = write_val;
+                }
+            }
         }
     }
 }
@@ -83,18 +133,6 @@ pub fn init() {
     let state = box State::new();
     let state = Box::into_raw(state);
     unsafe { STATE = state as *mut State };
-}
-
-fn render(board: &Board) {
-    log("Rendering");
-    canvasRender(board.0.as_ptr() as *const u8);
-}
-
-#[inline]
-fn get_coord(index: usize) -> (isize, isize) {
-    let x = index % BOARD_WIDTH;
-    let y = (index - x) / BOARD_WIDTH;
-    return (x as isize, y as isize);
 }
 
 #[inline]
@@ -146,7 +184,6 @@ fn get_next_cell_state(last_buf: &Board, index: usize) -> Cell {
 
 #[wasm_bindgen]
 pub fn tick() {
-    log("Tick in Wasm");
     let state = state();
     let (last_board, target_board): (&Board, &mut Board) = if state.cur_buf_1 {
         (&state.buf1, &mut state.buf2)
@@ -154,12 +191,15 @@ pub fn tick() {
         (&state.buf2, &mut state.buf1)
     };
 
-    log("Starting board iteration");
     for i in 0..CELL_COUNT {
         let new_val_for_cell = get_next_cell_state(last_board, i);
         target_board.0[i] = new_val_for_cell;
+
+        if last_board.0[i] != new_val_for_cell {
+            State::draw_canvas_cell(&mut state.canvas_buf, i, new_val_for_cell);
+        }
     }
     state.cur_buf_1 = !state.cur_buf_1;
 
-    render(target_board);
+    canvasRender(state.canvas_buf.as_ptr() as *const u8);
 }

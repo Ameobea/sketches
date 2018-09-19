@@ -12,24 +12,22 @@ wasm.then(async engine => {
   canvasRender = (ptr: number) => {
     let buf;
     try {
-      buf = new Uint8ClampedArray(wasmShim.getWasmBuf(), ptr, canvas.width * canvas.width * 4);
+      buf = new Uint8ClampedArray(wasmShim.getWasmBuf(), ptr, canvas.height * canvas.width * 4);
     } catch (e) {
-      console.log('Buffer detached.');
+      console.log(e);
+      setTimeout(() => requestAnimationFrame(tick), 0);
       return;
     }
 
-    console.log('canvas rendering');
-    // console.log(buf);
-    const imageData = new ImageData(buf, canvas.width, canvas.width);
+    const imageData = new ImageData(buf, canvas.height, canvas.width);
     ctx.putImageData(imageData, 0, 0);
-    requestAnimationFrame(tick);
+    setTimeout(() => requestAnimationFrame(tick), 0);
   };
 
   console.log('Engine loaded');
   engine.init();
 
   const tick = () => {
-    console.log('tick');
     engine.tick();
   };
 

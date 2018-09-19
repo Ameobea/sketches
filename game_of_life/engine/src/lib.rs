@@ -5,9 +5,7 @@ extern crate wasm_bindgen;
 
 use std::mem;
 use std::ptr;
-use std::u32;
 
-use common::log;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(module = "./index")]
@@ -21,7 +19,6 @@ const CELL_COUNT: usize = BOARD_HEIGHT * BOARD_WIDTH;
 const CANVAS_SCALE_FACTOR: usize = 3;
 const CANVAS_SIZE: usize = CELL_COUNT * 4 * CANVAS_SCALE_FACTOR * CANVAS_SCALE_FACTOR;
 
-#[repr(u32)]
 #[derive(Clone, Copy, PartialEq)]
 enum Cell {
     Dead,
@@ -101,7 +98,7 @@ impl State {
 
     pub fn draw_canvas_cell(canvas_buf: &mut [u8; CANVAS_SIZE], i: usize, state: Cell) {
         let (x, y) = get_coord(i);
-        let write_val = if state == Cell::Alive { 255 } else { 0 };
+        let write_val: u8 = if state == Cell::Alive { 255 } else { 0 };
 
         let px_per_row = BOARD_WIDTH * CANVAS_SCALE_FACTOR * 4;
         let px_per_cell_row = px_per_row * CANVAS_SCALE_FACTOR;
@@ -111,10 +108,9 @@ impl State {
             let cell_row_start_index = start_ix + (row * px_per_row);
             for col in 0..CANVAS_SCALE_FACTOR {
                 let cell_col_start_index = cell_row_start_index + (col * 4);
-                for i in 0..3 {
-                    let pixel_start_index = cell_col_start_index + i;
-                    canvas_buf[pixel_start_index] = write_val;
-                }
+                let array_ptr = unsafe { canvas_buf.as_ptr().offset(cell_col_start_index as isize) }
+                    as *mut u32;
+                unsafe { *array_ptr = mem::transmute((write_val, write_val, write_val, 255u8)) };
             }
         }
     }

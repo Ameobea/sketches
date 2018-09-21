@@ -17,6 +17,7 @@
     "suppressImplicitAnyIndexErrors": true,
     "noUnusedLocals": false,
     "skipLibCheck": true,
+    "jsx": "react",
     "typeRoots": ["./node_modules/@types"],
     "types": [],
     "baseUrl": ".",

@@ -6,6 +6,7 @@ extern crate wasm_bindgen;
 use std::mem;
 use std::ptr;
 
+use common::error;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(module = "./index")]
@@ -13,10 +14,10 @@ extern "C" {
     pub fn canvasRender(ptr: *const u8);
 }
 
-const BOARD_HEIGHT: usize = 250;
-const BOARD_WIDTH: usize = 250;
+const BOARD_HEIGHT: usize = 150;
+const BOARD_WIDTH: usize = 150;
 const CELL_COUNT: usize = BOARD_HEIGHT * BOARD_WIDTH;
-const CANVAS_SCALE_FACTOR: usize = 3;
+const CANVAS_SCALE_FACTOR: usize = 6;
 const CANVAS_SIZE: usize = CELL_COUNT * 4 * CANVAS_SCALE_FACTOR * CANVAS_SCALE_FACTOR;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -131,6 +132,31 @@ pub fn init() {
     unsafe { STATE = state as *mut State };
 }
 
+#[wasm_bindgen]
+pub fn set_pixel(x: usize, y: usize) {
+    if x >= BOARD_WIDTH || y >= BOARD_HEIGHT {
+        error(format!("({}, {}) is outside of the board", x, y));
+        return;
+    }
+
+    let state = state();
+
+    let i = y * BOARD_WIDTH + x;
+    let new_val = if Cell::Alive == if state.cur_buf_1 {
+        state.buf1.0[i]
+    } else {
+        state.buf2.0[i]
+    } {
+        Cell::Dead
+    } else {
+        Cell::Alive
+    };
+    state.buf1.0[i] = new_val;
+    state.buf2.0[i] = new_val;
+    State::draw_canvas_cell(&mut state.canvas_buf, i, new_val);
+    canvasRender(state.canvas_buf.as_ptr() as *const u8);
+}
+
 #[inline]
 fn get_next_cell_state(last_buf: &Board, index: usize) -> Cell {
     let cur_state: Cell = last_buf.0[index];
@@ -176,6 +202,26 @@ fn get_next_cell_state(last_buf: &Board, index: usize) -> Cell {
 
     // Stay dead as the base case
     return Cell::Dead;
+}
+
+#[wasm_bindgen]
+pub fn set_state(canvas_pattern: &[u8]) {
+    let state = state();
+    let cur_buf = if state.cur_buf_1 {
+        &mut state.buf1
+    } else {
+        &mut state.buf2
+    };
+
+    for (i, cell) in canvas_pattern.iter().enumerate() {
+        let cell_state = if *cell == 0 { Cell::Dead } else { Cell::Alive };
+        if cur_buf.0[i] != cell_state {
+            cur_buf.0[i] = cell_state;
+            State::draw_canvas_cell(&mut state.canvas_buf, i, cell_state);
+        }
+    }
+
+    canvasRender(state.canvas_buf.as_ptr() as *const u8);
 }
 
 #[wasm_bindgen]

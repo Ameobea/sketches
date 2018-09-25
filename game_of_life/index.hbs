@@ -6,15 +6,26 @@
   <title>{{ htmlWebpackPlugin.options.title }}</title>
   <style>
     body {
-      background-color: #456;
-      color: #AAA;
+      background-color: #111;
+      color: #CCC;
+    }
+
+    .wrapper {
+      display: flex;
+      flex-direction: row;
+    }
+
+    #root {
+      padding-left: 15px;
     }
   </style>
 </head>
 
 <body>
-  <canvas height="900" width="900" id="canvas"></canvas>
-  <div id='root'></div>
+  <div class="wrapper">
+    <canvas height="900" width="900" id="canvas"></canvas>
+    <div id='root'></div>
+  </div>
 </body>
 
 </html>

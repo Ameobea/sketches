@@ -11,7 +11,7 @@ const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
 
 export let canvasRender = ptr => console.warn('`canvasRender` called before loaded');
 
-let paused = false;
+let paused = true;
 let innerTick;
 
 export const pause = () => {
@@ -86,8 +86,6 @@ wasm.then(async engine => {
   innerTick = () => {
     engine.tick();
   };
-
-  innerTick();
 
   ReactDOM.render(<App engine={engine} />, document.getElementById('root'));
 });

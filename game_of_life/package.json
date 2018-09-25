@@ -27,6 +27,7 @@
   "dependencies": {
     "ramda": "^0.25.0",
     "react": "^16.5.2",
-    "react-dom": "^16.5.2"
+    "react-dom": "^16.5.2",
+    "typestyle": "^2.0.1"
   }
 }

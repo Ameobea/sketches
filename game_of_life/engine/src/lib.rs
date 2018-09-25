@@ -115,6 +115,14 @@ impl State {
             }
         }
     }
+
+    pub fn get_cur_buf(&mut self) -> &mut Board {
+        if self.cur_buf_1 {
+            &mut self.buf1
+        } else {
+            &mut self.buf2
+        }
+    }
 }
 
 static mut STATE: *mut State = ptr::null_mut();
@@ -127,9 +135,11 @@ fn state() -> &'static mut State {
 /// Called by the JS to initialize the game state before starting the simulation
 #[wasm_bindgen]
 pub fn init() {
-    let state = box State::new();
-    let state = Box::into_raw(state);
-    unsafe { STATE = state as *mut State };
+    let initial_state = box State::new();
+    let initial_state = Box::into_raw(initial_state);
+    unsafe { STATE = initial_state as *mut State };
+    let state = state();
+    canvasRender(state.canvas_buf.as_ptr() as *const u8)
 }
 
 #[wasm_bindgen]
@@ -140,13 +150,10 @@ pub fn set_pixel(x: usize, y: usize) {
     }
 
     let state = state();
+    let cur_buf = state.get_cur_buf();
 
     let i = y * BOARD_WIDTH + x;
-    let new_val = if Cell::Alive == if state.cur_buf_1 {
-        state.buf1.0[i]
-    } else {
-        state.buf2.0[i]
-    } {
+    let new_val = if cur_buf.0[i] == Cell::Alive {
         Cell::Dead
     } else {
         Cell::Alive
@@ -207,17 +214,33 @@ fn get_next_cell_state(last_buf: &Board, index: usize) -> Cell {
 #[wasm_bindgen]
 pub fn set_state(canvas_pattern: &[u8]) {
     let state = state();
-    let cur_buf = if state.cur_buf_1 {
-        &mut state.buf1
-    } else {
-        &mut state.buf2
-    };
 
     for (i, cell) in canvas_pattern.iter().enumerate() {
+        let cur_buf = state.get_cur_buf();
         let cell_state = if *cell == 0 { Cell::Dead } else { Cell::Alive };
         if cur_buf.0[i] != cell_state {
             cur_buf.0[i] = cell_state;
             State::draw_canvas_cell(&mut state.canvas_buf, i, cell_state);
+        }
+    }
+
+    canvasRender(state.canvas_buf.as_ptr() as *const u8);
+}
+
+#[wasm_bindgen]
+pub fn set_random_state() {
+    let state = state();
+
+    for i in 0..CELL_COUNT {
+        let cur_buf = state.get_cur_buf();
+        let new_state = if common::math_random() > 0.5 {
+            Cell::Alive
+        } else {
+            Cell::Dead
+        };
+        if cur_buf.0[i] != new_state {
+            cur_buf.0[i] = new_state;
+            State::draw_canvas_cell(&mut state.canvas_buf, i, new_state);
         }
     }
 

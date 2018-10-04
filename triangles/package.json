@@ -19,5 +19,9 @@
     "start": "webpack-dev-server",
     "build": "rm -rf dist/* && webpack --config webpack.prod.js"
   },
-  "dependencies": {}
+  "dependencies": {
+    "react": "^16.5.2",
+    "react-control-panel": "^0.3.0",
+    "react-dom": "^16.5.2"
+  }
 }

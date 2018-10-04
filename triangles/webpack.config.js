@@ -30,7 +30,7 @@ module.exports = {
   plugins: [
     new HtmlWebpackPlugin({
       alwaysWriteToDisk: true,
-      title: 'Untitled Sketch',
+      title: 'Triangles',
       minify: true,
       template: 'index.hbs',
     }),

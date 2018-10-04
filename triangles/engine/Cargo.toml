@@ -1,0 +1,16 @@
+[package]
+authors = ["Casey Primozic <me@ameo.link>"]
+edition = "2018"
+name = "engine"
+version = "0.1.0"
+[dependencies]
+lazy_static = "1.1.0"
+nalgebra = "0.16.4"
+ncollide2d = "0.17"
+wasm-bindgen = "0.2.21"
+
+[dependencies.common]
+path = "../../common"
+
+[lib]
+crate-type = ["cdylib"]

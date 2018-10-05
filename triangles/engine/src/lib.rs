@@ -15,7 +15,7 @@ use std::f32;
 use std::ptr;
 
 use nalgebra::{Isometry2, Point2, Translation2, Vector2};
-use ncollide2d::bounding_volume::aabb::AABB;
+use ncollide2d::bounding_volume::{aabb::AABB, BoundingVolume};
 use ncollide2d::partitioning::{BVTVisitor, DBVTLeaf, DBVT};
 use ncollide2d::shape::{Shape, Triangle};
 use ncollide2d::transformation::ToPolyline;
@@ -38,6 +38,7 @@ extern "C" {
 type TriangleBuf = [Point2<f32>; 3];
 
 const RADS_PER_CIRCLE: f32 = f32::consts::PI * 2.0;
+const PLACEMENT_ATTEMPTS: usize = 3;
 
 #[derive(Deserialize)]
 pub struct Conf<'a> {
@@ -73,6 +74,8 @@ static mut TRIANGLES: *mut Vec<TriangleBuf> = ptr::null_mut();
 
 #[wasm_bindgen]
 pub fn init() {
+    common::set_panic_hook();
+
     let world: Box<World> = box DBVT::new();
     let p: *mut World = Box::into_raw(world);
     unsafe { COLLISION_WORLD = p };
@@ -107,7 +110,8 @@ fn bounds(p1: Point2<f32>, p2: Point2<f32>, p3: Point2<f32>) -> (Point2<f32>, Po
 
 #[inline]
 fn ccw(p1: Point2<f32>, p2: Point2<f32>, p3: Point2<f32>) -> bool {
-    (p3.y - p1.y) * (p2.x - p1.x) > (p2.y - p1.y) * (p3.x - p1.x)
+    // It is critical that we use `>=` here since all triangles are connected at one point
+    (p3.y - p1.y) * (p2.x - p1.x) >= (p2.y - p1.y) * (p3.x - p1.x)
 }
 
 /// adapted from https://stackoverflow.com/a/9997374/3833068
@@ -124,7 +128,15 @@ fn check_line_seg_intersection(
 /// Additionally, if two sides of the first triangle don't intersect, the triangles don't
 /// intersect.
 fn check_triangle_collision(t1: &TriangleBuf, t2: &TriangleBuf) -> bool {
-    false // TODO
+    for (l1p1, l1p2) in &[(t1[0], t1[1]), (t1[1], t1[2])] {
+        for (l2p1, l2p2) in &[(t2[0], t2[1]), (t2[1], t2[2]), (t2[2], t2[0])] {
+            if check_line_seg_intersection(*l1p1, *l1p2, *l2p1, *l2p2) {
+                return true;
+            }
+        }
+    }
+
+    false
 }
 
 struct TriangleCollisionVisitor<'a> {
@@ -136,17 +148,15 @@ struct TriangleCollisionVisitor<'a> {
 
 impl<'a> BVTVisitor<usize, AABB<f32>> for TriangleCollisionVisitor<'a> {
     fn visit_internal(&mut self, bv: &AABB<f32>) -> bool {
-        if (*self.does_collide) {
+        if *self.does_collide {
             return false;
         }
 
-        false // TODO
+        self.triangle_bv.intersects(bv)
     }
 
-    fn visit_leaf(&mut self, i: &usize, bv: &AABB<f32>) {
-        // TODO: Perform accurate collision detection on the triangles to see if they actually
-        // intersect and set `does_collide` to true if it does
-        if (*self.does_collide) {
+    fn visit_leaf(&mut self, i: &usize, _bv: &AABB<f32>) {
+        if *self.does_collide {
             return;
         }
 
@@ -194,7 +204,9 @@ pub fn render(conf_str: &str) {
         base_triangle_coords[2] + initial_offset,
     ];
     let mut rotation = 0.0;
-    for _ in 0..triangle_count {
+    let mut drawn_triangles = 0;
+    let mut placement_failures = 0;
+    'outer: loop {
         // pick one of the other two vertices to use as the new origin
         let (ix, rot_offset) = if common::math_random() > 0.5 {
             (1, deg_to_rad(60.0))
@@ -202,9 +214,58 @@ pub fn render(conf_str: &str) {
             (2, deg_to_rad(-60.0))
         };
 
-        rotation += rot_offset;
-        rotation += (common::math_random() as f32 - 0.5) * 2. * max_rotation_rads;
         let origin = last_triangle[ix];
+        rotation += rot_offset;
+        let mut i = 0;
+        let mut bounding_box: AABB<f32>;
+        let mut proposed_rotation;
+        loop {
+            proposed_rotation =
+                rotation + (common::math_random() as f32 - 0.5) * 2. * max_rotation_rads;
+            // determine if this proposed triangle would intersect any other triangle
+            let proposed_isometry =
+                Isometry2::new(Vector2::new(origin.x, origin.y), proposed_rotation);
+            let proposed_triangle = [
+                proposed_isometry * base_triangle_coords[0],
+                proposed_isometry * base_triangle_coords[1],
+                proposed_isometry * base_triangle_coords[2],
+            ];
+            let (min, max) = bounds(
+                proposed_triangle[0],
+                proposed_triangle[1],
+                proposed_triangle[2],
+            );
+            bounding_box = AABB::new(min, max);
+
+            let mut does_collide = false;
+            let mut visitor = TriangleCollisionVisitor {
+                triangle: &proposed_triangle,
+                triangle_bv: &bounding_box,
+                triangles: triangles,
+                does_collide: &mut does_collide,
+            };
+            world.visit(&mut visitor);
+            if !does_collide {
+                // we've found a valid triangle placement
+                break;
+            }
+
+            i += 1;
+
+            if i > PLACEMENT_ATTEMPTS {
+                placement_failures += 1;
+                if placement_failures > 1000 {
+                    common::error("Failed to place a triangle in 1000 iterations; bailing out.");
+                    return;
+                }
+
+                // we failed to place a triangle at this origin; we have to pick a new origin point.
+                let ix = (common::math_random() * triangles.len() as f64).trunc() as usize;
+                last_triangle = triangles[ix];
+                continue 'outer;
+            }
+        }
+        rotation = proposed_rotation;
 
         render_triangle_array(
             &base_triangle_coords,
@@ -214,9 +275,13 @@ pub fn render(conf_str: &str) {
             triangle_border_color,
         );
 
-        let (min, max) = bounds(last_triangle[0], last_triangle[1], last_triangle[2]);
-        let bounding_box = AABB::new(min, max);
         triangles.push(last_triangle);
-        let leaf_id = world.insert(DBVTLeaf::new(bounding_box, triangles.len()));
+        let leaf_id = world.insert(DBVTLeaf::new(bounding_box, triangles.len() - 1));
+
+        drawn_triangles += 1;
+        if drawn_triangles == triangle_count {
+            break;
+        }
+        placement_failures = 0;
     }
 }

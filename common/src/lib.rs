@@ -1,8 +1,11 @@
+#![feature(box_syntax)]
+
 extern crate uuid;
 extern crate wasm_bindgen;
 
 use std::fmt::Debug;
 use std::mem;
+use std::panic::{self, PanicInfo};
 
 use uuid::Uuid;
 use wasm_bindgen::prelude::*;
@@ -51,4 +54,8 @@ pub fn v4_uuid() -> Uuid {
     // Because I really don't care, honestly.
     let high_quality_entropy: (f64, f64) = (math_random(), math_random());
     unsafe { mem::transmute(high_quality_entropy) }
+}
+
+pub fn set_panic_hook() {
+    panic::set_hook(box |info: &PanicInfo| error(info.to_string()));
 }

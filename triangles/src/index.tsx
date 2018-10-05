@@ -57,12 +57,13 @@ wasm.then(engine => {
 });
 
 const settings = [
-  { type: 'range', label: 'prng_seed', min: 0, max: 1, steps: 1000 },
+  { type: 'range', label: 'prng_seed', min: 0, max: 1, steps: 1000, initial: 0.5 },
   { type: 'range', label: 'canvas_width', min: 100, max: 1000, initial: 800 },
   { type: 'range', label: 'canvas_height', min: 100, max: 1000, initial: 800 },
   { type: 'range', label: 'triangle_size', min: 1.0, max: 50.0, step: 0.5, initial: 10.0 },
   { type: 'color', label: 'triangle_border_color', initial: '#7c007c', format: 'rgb' },
   { type: 'color', label: 'triangle_color', initial: 'rgb(81, 12, 84)', format: 'rgb' },
+  { type: 'range', label: 'rotation_offset', min: -180, max: 180, initial: 60, steps: 250 },
   {
     type: 'range',
     label: 'triangle_count',

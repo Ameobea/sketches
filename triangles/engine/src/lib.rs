@@ -1,24 +1,26 @@
 #![feature(box_syntax, const_fn)]
 
 extern crate common;
-extern crate wasm_bindgen;
-#[macro_use]
-extern crate lazy_static;
 extern crate nalgebra;
 extern crate ncollide2d;
+extern crate rand_core;
+extern crate rand_pcg;
 extern crate serde;
 extern crate serde_json;
+extern crate wasm_bindgen;
 #[macro_use]
 extern crate serde_derive;
 
 use std::f32;
+use std::mem;
 use std::ptr;
 
-use nalgebra::{Isometry2, Point2, Translation2, Vector2};
+use nalgebra::{Isometry2, Point2, Vector2};
 use ncollide2d::bounding_volume::{aabb::AABB, BoundingVolume};
 use ncollide2d::partitioning::{BVTVisitor, DBVTLeaf, DBVT};
-use ncollide2d::shape::{Shape, Triangle};
-use ncollide2d::transformation::ToPolyline;
+use rand::Rng;
+use rand_core::SeedableRng;
+use rand_pcg::Pcg32;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(module = "./index")]
@@ -37,11 +39,11 @@ extern "C" {
 
 type TriangleBuf = [Point2<f32>; 3];
 
-const RADS_PER_CIRCLE: f32 = f32::consts::PI * 2.0;
 const PLACEMENT_ATTEMPTS: usize = 3;
 
 #[derive(Deserialize)]
 pub struct Conf<'a> {
+    pub prng_seed: f64,
     pub canvas_width: usize,
     pub canvas_height: usize,
     pub triangle_size: f32,
@@ -49,6 +51,7 @@ pub struct Conf<'a> {
     pub max_rotation_rads: f32,
     pub triangle_color: &'a str,
     pub triangle_border_color: &'a str,
+    pub rotation_offset: f32,
 }
 
 fn render_triangle_array(
@@ -71,6 +74,7 @@ fn render_triangle_array(
 type World = DBVT<f32, usize, AABB<f32>>;
 static mut COLLISION_WORLD: *mut World = ptr::null_mut();
 static mut TRIANGLES: *mut Vec<TriangleBuf> = ptr::null_mut();
+static mut RNG: *mut Pcg32 = ptr::null_mut();
 
 #[wasm_bindgen]
 pub fn init() {
@@ -83,6 +87,11 @@ pub fn init() {
     let triangles: Box<Vec<TriangleBuf>> = box Vec::with_capacity(200);
     let p: *mut Vec<TriangleBuf> = Box::into_raw(triangles);
     unsafe { TRIANGLES = p };
+
+    let rng_seed: [u8; 16] = unsafe { mem::transmute(1u128) };
+    let rng: Box<Pcg32> = box Pcg32::from_seed(rng_seed);
+    let p: *mut Pcg32 = Box::into_raw(rng);
+    unsafe { RNG = p };
 }
 
 #[inline]
@@ -168,12 +177,15 @@ impl<'a> BVTVisitor<usize, AABB<f32>> for TriangleCollisionVisitor<'a> {
 
 #[wasm_bindgen]
 pub fn render(conf_str: &str) {
+    // Clear the collision world, empty the geometry buf
     let world: &mut World = unsafe { &mut *COLLISION_WORLD };
     let triangles: &mut Vec<TriangleBuf> = unsafe { &mut *TRIANGLES };
     *world = DBVT::new();
     triangles.clear();
+    let rng = unsafe { &mut *RNG };
 
     let Conf {
+        prng_seed,
         canvas_width,
         canvas_height,
         triangle_size,
@@ -181,6 +193,7 @@ pub fn render(conf_str: &str) {
         max_rotation_rads,
         triangle_color,
         triangle_border_color,
+        rotation_offset,
     } = match serde_json::from_str(conf_str) {
         Ok(conf) => conf,
         Err(err) => {
@@ -198,6 +211,8 @@ pub fn render(conf_str: &str) {
         Point2::new(triangle_offset_x, triangle_offset_y),
     ];
 
+    *rng = Pcg32::from_seed(unsafe { mem::transmute((prng_seed, prng_seed)) });
+
     let mut last_triangle = [
         base_triangle_coords[0] + initial_offset,
         base_triangle_coords[1] + initial_offset,
@@ -208,10 +223,10 @@ pub fn render(conf_str: &str) {
     let mut placement_failures = 0;
     'outer: loop {
         // pick one of the other two vertices to use as the new origin
-        let (ix, rot_offset) = if common::math_random() > 0.5 {
-            (1, deg_to_rad(60.0))
+        let (ix, rot_offset) = if rng.gen_range(0, 2) == 0 {
+            (1, deg_to_rad(rotation_offset))
         } else {
-            (2, deg_to_rad(-60.0))
+            (2, deg_to_rad(-rotation_offset))
         };
 
         let origin = last_triangle[ix];
@@ -221,7 +236,7 @@ pub fn render(conf_str: &str) {
         let mut proposed_rotation;
         loop {
             proposed_rotation =
-                rotation + (common::math_random() as f32 - 0.5) * 2. * max_rotation_rads;
+                rotation + rng.gen_range(-max_rotation_rads, max_rotation_rads + 0.00001);
             // determine if this proposed triangle would intersect any other triangle
             let proposed_isometry =
                 Isometry2::new(Vector2::new(origin.x, origin.y), proposed_rotation);
@@ -260,7 +275,7 @@ pub fn render(conf_str: &str) {
                 }
 
                 // we failed to place a triangle at this origin; we have to pick a new origin point.
-                let ix = (common::math_random() * triangles.len() as f64).trunc() as usize;
+                let ix = rng.gen_range(0, triangles.len());
                 last_triangle = triangles[ix];
                 continue 'outer;
             }
@@ -276,7 +291,7 @@ pub fn render(conf_str: &str) {
         );
 
         triangles.push(last_triangle);
-        let leaf_id = world.insert(DBVTLeaf::new(bounding_box, triangles.len() - 1));
+        let _leaf_id = world.insert(DBVTLeaf::new(bounding_box, triangles.len() - 1));
 
         drawn_triangles += 1;
         if drawn_triangles == triangle_count {

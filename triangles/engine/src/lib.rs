@@ -63,7 +63,7 @@ fn p2(x: f32, y: f32) -> Point2<f32> {
 
 fn render_triangle_array(
     base_triangle: &TriangleBuf,
-    transformed: &mut TriangleBuf,
+    result_buf: &mut TriangleBuf,
     offset: Isometry2<f32>,
     color: &str,
     border_color: &str,
@@ -75,7 +75,7 @@ fn render_triangle_array(
     ];
     let [p1, p2, p3] = new_triangle;
     render_triangle(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y, color, border_color);
-    *transformed = new_triangle
+    *result_buf = new_triangle
 }
 
 type World = DBVT<f32, usize, AABB<f32>>;
@@ -126,11 +126,11 @@ fn bounds(v1: Point2<f32>, v2: Point2<f32>, v3: Point2<f32>) -> (Point2<f32>, Po
 
 #[inline]
 fn ccw(p1: Point2<f32>, p2: Point2<f32>, p3: Point2<f32>) -> bool {
-    // It is critical that we use `>=` here since all triangles are connected at one point
     (p3.y - p1.y) * (p2.x - p1.x) >= (p2.y - p1.y) * (p3.x - p1.x)
 }
 
 /// adapted from https://stackoverflow.com/a/9997374/3833068
+#[inline]
 fn check_line_seg_intersection(
     l1p1: Point2<f32>,
     l1p2: Point2<f32>,
@@ -144,7 +144,7 @@ fn check_line_seg_intersection(
 /// Additionally, if two sides of the first triangle don't intersect, the triangles don't
 /// intersect.
 fn check_triangle_collision(t1: &TriangleBuf, t2: &TriangleBuf) -> bool {
-    for (l1p1, l1p2) in &[(t1[0], t1[1]), (t1[1], t1[2])] {
+    for (l1p1, l1p2) in &[(t1[0], t1[1]), (t1[1], t1[2]), (t1[2], t1[0])] {
         for (l2p1, l2p2) in &[(t2[0], t2[1]), (t2[1], t2[2]), (t2[2], t2[0])] {
             if check_line_seg_intersection(*l1p1, *l1p2, *l2p1, *l2p2) {
                 return true;
@@ -299,7 +299,7 @@ pub fn render(conf_str: &str) {
                 triangle_bv: &bounding_box,
                 triangles: triangles,
                 does_collide: &mut does_collide,
-                debug: drawn_triangles + 1 == triangle_count,
+                debug: debug_bounding_boxes && (drawn_triangles + 1 == triangle_count),
             };
             world.visit(&mut visitor);
             if !does_collide {

@@ -16,13 +16,27 @@ export const render_triangle = (
   color: string,
   border_color: string
 ) => {
-  const poly: SVGPolygonElement = (document.createElementNS(
-    'http://www.w3.org/2000/svg',
-    'polygon'
-  ) as any) as SVGPolygonElement;
+  const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
   poly.setAttribute('points', `${x1},${y1} ${x2},${y2} ${x3},${y3}`);
   poly.setAttribute('style', `fill:${color};stroke:${border_color};stroke-width:1`);
   SVG.appendChild(poly);
+};
+
+export const render_quad = (
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  color: string,
+  border_color: string
+) => {
+  const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  rect.setAttribute('x', x.toString());
+  rect.setAttribute('y', y.toString());
+  rect.setAttribute('width', width.toString());
+  rect.setAttribute('height', height.toString());
+  rect.setAttribute('style', `fill:${color};stroke:${border_color};stroke-width:1`);
+  SVG.appendChild(rect);
 };
 
 const deleteAllChildren = (node: HTMLElement) => {
@@ -69,9 +83,11 @@ const settings = [
     label: 'triangle_count',
     initial: 200,
     min: 1,
-    max: 10000,
-    steps: 100,
-    scale: 'log',
+    max: 200,
+    // steps: 100,
+    step: 1,
+    // scale: 'log',
   },
   { type: 'range', label: 'max_rotation_rads', initial: 0.5, min: 0.0, max: Math.PI },
+  { type: 'checkbox', label: 'debug_bounding_boxes', initial: false },
 ];

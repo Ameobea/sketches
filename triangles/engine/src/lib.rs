@@ -35,6 +35,7 @@ extern "C" {
         color: &str,
         border_color: &str,
     );
+    pub fn render_quad(x: f32, y: f32, width: f32, height: f32, color: &str, border_color: &str);
 }
 
 type TriangleBuf = [Point2<f32>; 3];
@@ -52,6 +53,12 @@ pub struct Conf<'a> {
     pub triangle_color: &'a str,
     pub triangle_border_color: &'a str,
     pub rotation_offset: f32,
+    pub debug_bounding_boxes: bool,
+}
+
+#[inline(always)]
+fn p2(x: f32, y: f32) -> Point2<f32> {
+    Point2::new(x, y)
 }
 
 fn render_triangle_array(
@@ -110,10 +117,10 @@ fn max3(a: f32, b: f32, c: f32) -> f32 {
 }
 
 #[inline]
-fn bounds(p1: Point2<f32>, p2: Point2<f32>, p3: Point2<f32>) -> (Point2<f32>, Point2<f32>) {
+fn bounds(v1: Point2<f32>, v2: Point2<f32>, v3: Point2<f32>) -> (Point2<f32>, Point2<f32>) {
     (
-        Point2::new(min3(p1.x, p2.x, p3.x), min3(p1.y, p2.y, p3.y)),
-        Point2::new(max3(p1.x, p2.x, p3.x), max3(p1.y, p2.y, p3.y)),
+        p2(min3(v1.x, v2.x, v3.x), min3(v1.y, v2.y, v3.y)),
+        p2(max3(v1.x, v2.x, v3.x), max3(v1.y, v2.y, v3.y)),
     )
 }
 
@@ -153,6 +160,7 @@ struct TriangleCollisionVisitor<'a> {
     pub triangle_bv: &'a AABB<f32>,
     pub triangles: &'a [TriangleBuf],
     pub does_collide: &'a mut bool,
+    pub debug: bool,
 }
 
 impl<'a> BVTVisitor<usize, AABB<f32>> for TriangleCollisionVisitor<'a> {
@@ -169,9 +177,41 @@ impl<'a> BVTVisitor<usize, AABB<f32>> for TriangleCollisionVisitor<'a> {
             return;
         }
 
+        if self.debug {
+            common::log(format!(
+                "Checking collision: {:?} x {:?}",
+                self.triangle, self.triangles[*i]
+            ));
+        }
+
         if check_triangle_collision(&self.triangle, &self.triangles[*i]) {
             *self.does_collide = true;
         }
+    }
+}
+
+fn draw_bounding_box(bv: &AABB<f32>, color: &str, border_color: &str) {
+    let (min, max) = (bv.mins(), bv.maxs());
+    render_quad(
+        min.x,
+        min.y,
+        max.x - min.x,
+        max.y - min.y,
+        color,
+        border_color,
+    );
+}
+
+struct BoundingBoxDebugVisitor;
+
+impl BVTVisitor<usize, AABB<f32>> for BoundingBoxDebugVisitor {
+    fn visit_internal(&mut self, bv: &AABB<f32>) -> bool {
+        draw_bounding_box(bv, "rgba(13, 24, 230, 0.035)", "#2212BB");
+        true
+    }
+
+    fn visit_leaf(&mut self, _i: &usize, bv: &AABB<f32>) {
+        draw_bounding_box(bv, "rgba(230, 24, 80, 0.2)", "#BC1231");
     }
 }
 
@@ -194,6 +234,7 @@ pub fn render(conf_str: &str) {
         triangle_color,
         triangle_border_color,
         rotation_offset,
+        debug_bounding_boxes,
     } = match serde_json::from_str(conf_str) {
         Ok(conf) => conf,
         Err(err) => {
@@ -207,8 +248,8 @@ pub fn render(conf_str: &str) {
     let initial_offset = Vector2::new(canvas_width as f32 / 2.0, canvas_height as f32 / 2.0);
     let base_triangle_coords: TriangleBuf = [
         Point2::origin(),
-        Point2::new(-triangle_offset_x, triangle_offset_y),
-        Point2::new(triangle_offset_x, triangle_offset_y),
+        p2(-triangle_offset_x, triangle_offset_y),
+        p2(triangle_offset_x, triangle_offset_y),
     ];
 
     *rng = Pcg32::from_seed(unsafe { mem::transmute((prng_seed, prng_seed)) });
@@ -258,6 +299,7 @@ pub fn render(conf_str: &str) {
                 triangle_bv: &bounding_box,
                 triangles: triangles,
                 does_collide: &mut does_collide,
+                debug: drawn_triangles + 1 == triangle_count,
             };
             world.visit(&mut visitor);
             if !does_collide {
@@ -299,4 +341,24 @@ pub fn render(conf_str: &str) {
         }
         placement_failures = 0;
     }
+
+    if debug_bounding_boxes {
+        world.visit(&mut BoundingBoxDebugVisitor);
+    }
+}
+
+#[test]
+fn triangle_intersection() {
+    let triangle1 = [
+        p2(305.66763, 439.45938),
+        p2(278.40073, 428.20035),
+        p2(282.28357, 457.4437),
+    ];
+    let triangle2 = [
+        p2(290.44968, 472.76297),
+        p2(310.24722, 450.89273),
+        p2(281.4083, 444.68268),
+    ];
+
+    assert!(check_triangle_collision(&triangle1, &triangle2));
 }

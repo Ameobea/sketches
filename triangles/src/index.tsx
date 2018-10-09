@@ -48,6 +48,32 @@ const deleteAllChildren = (node: HTMLElement) => {
 wasm.then(engine => {
   engine.init();
 
+  const settings = [
+    { type: 'range', label: 'prng_seed', min: 0, max: 1, steps: 1000, initial: 0.5 },
+    { type: 'range', label: 'canvas_width', min: 100, max: 1000, initial: 800 },
+    { type: 'range', label: 'canvas_height', min: 100, max: 1000, initial: 800 },
+    { type: 'range', label: 'triangle_size', min: 1.0, max: 50.0, step: 0.5, initial: 10.0 },
+    // TODO: handle these client side
+    { type: 'color', label: 'triangle_border_color', initial: '#7c007c', format: 'rgb' }, // rgb(50, 115, 3)
+    { type: 'color', label: 'triangle_color', initial: 'rgb(81, 12, 84)', format: 'rgb' }, // rgb(12, 84, 22)
+    { type: 'color', label: 'background_color', initial: '#080808', format: 'hex' },
+    { type: 'range', label: 'rotation_offset', min: -180, max: 180, initial: 60, steps: 250 },
+    {
+      type: 'range',
+      label: 'triangle_count',
+      initial: 200,
+      min: 1,
+      max: 20000,
+      steps: 250,
+      scale: 'log',
+    },
+    { type: 'range', label: 'max_rotation_rads', initial: 0.5, min: 0.0, max: Math.PI },
+    { type: 'checkbox', label: 'debug_bounding_boxes', initial: false },
+    { type: 'range', label: 'generation_rate', min: 0.0, max: 10.0, steps: 200 },
+    { type: 'button', label: 'start_generating', action: () => {} },
+    { type: 'button', label: 'stop_generating', action: () => {} },
+  ];
+
   const App = () => (
     <Panel
       position="top-right"
@@ -56,6 +82,7 @@ wasm.then(engine => {
       onChange={(_key, _val, state) => {
         SVG.setAttribute('height', state.canvas_height);
         SVG.setAttribute('width', state.canvas_width);
+        SVG.setAttribute('style', `background-color: ${state.background_color};`);
         deleteAllChildren(SVG);
 
         engine.render(
@@ -69,24 +96,3 @@ wasm.then(engine => {
   const root = document.getElementById('root');
   ReactDOM.render(<App />, root);
 });
-
-const settings = [
-  { type: 'range', label: 'prng_seed', min: 0, max: 1, steps: 1000, initial: 0.5 },
-  { type: 'range', label: 'canvas_width', min: 100, max: 1000, initial: 800 },
-  { type: 'range', label: 'canvas_height', min: 100, max: 1000, initial: 800 },
-  { type: 'range', label: 'triangle_size', min: 1.0, max: 50.0, step: 0.5, initial: 10.0 },
-  { type: 'color', label: 'triangle_border_color', initial: '#7c007c', format: 'rgb' },
-  { type: 'color', label: 'triangle_color', initial: 'rgb(81, 12, 84)', format: 'rgb' },
-  { type: 'range', label: 'rotation_offset', min: -180, max: 180, initial: 60, steps: 250 },
-  {
-    type: 'range',
-    label: 'triangle_count',
-    initial: 200,
-    min: 1,
-    max: 20000,
-    steps: 250,
-    scale: 'log',
-  },
-  { type: 'range', label: 'max_rotation_rads', initial: 0.5, min: 0.0, max: Math.PI },
-  { type: 'checkbox', label: 'debug_bounding_boxes', initial: false },
-];

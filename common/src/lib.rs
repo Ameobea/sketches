@@ -34,15 +34,27 @@ pub fn debug<T: Debug>(x: T) -> String {
 }
 
 pub fn log<T: AsRef<str>>(msg: T) {
-    js_log(msg.as_ref())
+    if cfg!(target_arch = "wasm32") {
+        js_log(msg.as_ref())
+    } else {
+        println!("{}", msg.as_ref());
+    }
 }
 
 pub fn warn<T: AsRef<str>>(msg: T) {
-    js_warn(msg.as_ref())
+    if cfg!(target_arch = "wasm32") {
+        js_warn(msg.as_ref())
+    } else {
+        println!("{}", msg.as_ref());
+    }
 }
 
 pub fn error<T: AsRef<str>>(msg: T) {
-    js_error(msg.as_ref())
+    if cfg!(target_arch = "wasm32") {
+        js_error(msg.as_ref())
+    } else {
+        println!("{}", msg.as_ref());
+    }
 }
 
 pub fn math_random() -> f64 {

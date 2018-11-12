@@ -6,6 +6,8 @@ const wasm = import('./engine');
 
 const SVG: HTMLElement = document.getElementById('svg') as any;
 
+let renderIx: number = 0;
+
 export const render_triangle = (
   x1: number,
   y1: number,
@@ -19,7 +21,10 @@ export const render_triangle = (
   const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
   poly.setAttribute('points', `${x1},${y1} ${x2},${y2} ${x3},${y3}`);
   poly.setAttribute('style', `fill:${color};stroke:${border_color};stroke-width:1`);
+  poly.setAttribute('id', `poly-${renderIx}`);
+  renderIx += 1;
   SVG.appendChild(poly);
+  return renderIx;
 };
 
 export const render_quad = (
@@ -38,6 +43,9 @@ export const render_quad = (
   rect.setAttribute('style', `fill:${color};stroke:${border_color};stroke-width:1`);
   SVG.appendChild(rect);
 };
+
+export const delete_elem = (id: number) =>
+  console.log(id) || document.getElementById(`poly-${id}`)!.remove();
 
 const deleteAllChildren = (node: HTMLElement) => {
   while (node.firstChild) {
@@ -69,8 +77,8 @@ wasm.then(engine => {
     },
     { type: 'range', label: 'max_rotation_rads', initial: 0.5, min: 0.0, max: Math.PI },
     { type: 'checkbox', label: 'debug_bounding_boxes', initial: false },
-    { type: 'range', label: 'generation_rate', min: 0.0, max: 10.0, steps: 200 },
-    { type: 'button', label: 'start_generating', action: () => {} },
+    { type: 'range', label: 'generation_rate', min: 0.0, max: 10.0, steps: 200, initial: 4.0 },
+    { type: 'button', label: 'start_generating', action: () => engine.generate() },
     { type: 'button', label: 'stop_generating', action: () => {} },
   ];
 

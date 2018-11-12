@@ -17,7 +17,7 @@ use std::ptr;
 
 use nalgebra::{Isometry2, Point2, Vector2};
 use ncollide2d::bounding_volume::{aabb::AABB, BoundingVolume};
-use ncollide2d::partitioning::{BVTVisitor, DBVTLeaf, DBVT};
+use ncollide2d::partitioning::{BVTVisitor, DBVTLeaf, DBVTLeafId, DBVT};
 use rand::Rng;
 use rand_core::SeedableRng;
 use rand_pcg::Pcg32;
@@ -25,6 +25,7 @@ use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(module = "./index")]
 extern "C" {
+    #[allow(clippy::too_many_arguments)]
     pub fn render_triangle(
         x1: f32,
         y1: f32,
@@ -34,8 +35,9 @@ extern "C" {
         y3: f32,
         color: &str,
         border_color: &str,
-    );
+    ) -> usize;
     pub fn render_quad(x: f32, y: f32, width: f32, height: f32, color: &str, border_color: &str);
+    pub fn delete_elem(elem_id: usize);
 }
 
 type TriangleBuf = [Point2<f32>; 3];
@@ -44,20 +46,21 @@ const PLACEMENT_ATTEMPTS: usize = 3;
 const PLACEMENT_BAILOUT_THRESHOLD: usize = 1000;
 
 #[derive(Deserialize)]
-pub struct Conf<'a> {
+pub struct Conf {
     pub prng_seed: f64,
     pub canvas_width: usize,
     pub canvas_height: usize,
     pub triangle_size: f32,
     pub triangle_count: usize,
     pub max_rotation_rads: f32,
-    pub triangle_color: &'a str,
-    pub triangle_border_color: &'a str,
+    pub triangle_color: String,
+    pub triangle_border_color: String,
     pub rotation_offset: f32,
     pub debug_bounding_boxes: bool,
+    pub generation_rate: f32,
 }
 
-impl<'a> Conf<'a> {
+impl Conf {
     /// Returns `(offset_x, offset_y)`
     fn get_base_triangle_offsets(&self) -> (f32, f32) {
         let triangle_offset_x = self.triangle_size / 2.0;
@@ -69,21 +72,24 @@ impl<'a> Conf<'a> {
     }
 }
 
-struct Env<'a> {
-    pub conf: Conf<'a>,
+struct Env {
+    pub conf: Conf,
     pub triangle_offset_x: f32,
     pub triangle_offset_y: f32,
     pub base_triangle_coords: TriangleBuf,
+    pub last_triangle: TriangleBuf,
+    pub rotation: f32,
+    pub oldest_triangle_ix: usize,
 }
 
-impl<'a> Env<'a> {
-    pub fn parse_from_str(s: &'a str) -> Result<Self, String> {
+impl Env {
+    pub fn parse_from_str(s: &str) -> Result<Self, String> {
         serde_json::from_str(s)
             .map_err(|err| format!("Error decoding provided conf object: {:?}", err))
             .map(Self::new)
     }
 
-    pub fn new(conf: Conf<'a>) -> Self {
+    pub fn new(conf: Conf) -> Self {
         let (triangle_offset_x, triangle_offset_y) = conf.get_base_triangle_offsets();
         // Clear out the collision world, empty the geometry buffer, + reseed PRNG
         let world = unsafe { &mut *COLLISION_WORLD };
@@ -92,17 +98,39 @@ impl<'a> Env<'a> {
         triangles.clear();
         *rng() = Pcg32::from_seed(unsafe { mem::transmute((conf.prng_seed, conf.prng_seed)) });
 
+        let base_triangle_coords = [
+            Point2::origin(),
+            p2(-triangle_offset_x, triangle_offset_y),
+            p2(triangle_offset_x, triangle_offset_y),
+        ];
+        let initial_offset = Vector2::new(
+            conf.canvas_width as f32 / 2.0,
+            conf.canvas_height as f32 / 2.0,
+        );
+        let last_triangle = [
+            base_triangle_coords[0] + initial_offset,
+            base_triangle_coords[1] + initial_offset,
+            base_triangle_coords[2] + initial_offset,
+        ];
+        let rotation = 0.0;
+
         Env {
             conf,
             triangle_offset_x,
             triangle_offset_y,
-            base_triangle_coords: [
-                Point2::origin(),
-                p2(-triangle_offset_x, triangle_offset_y),
-                p2(triangle_offset_x, triangle_offset_y),
-            ],
+            base_triangle_coords,
+            last_triangle,
+            rotation,
+            oldest_triangle_ix: 0,
         }
     }
+}
+
+#[derive(Debug)]
+struct TriangleHandle {
+    pub geometry: TriangleBuf,
+    pub collider_handle: DBVTLeafId,
+    pub dom_id: usize,
 }
 
 #[inline(always)]
@@ -111,15 +139,16 @@ fn p2(x: f32, y: f32) -> Point2<f32> {
 }
 
 #[inline]
-fn render_triangle_array(triangle: &TriangleBuf, color: &str, border_color: &str) {
+fn render_triangle_array(triangle: &TriangleBuf, color: &str, border_color: &str) -> usize {
     let [p1, p2, p3] = *triangle;
-    render_triangle(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y, color, border_color);
+    render_triangle(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y, color, border_color)
 }
 
 type World = DBVT<f32, usize, AABB<f32>>;
 static mut COLLISION_WORLD: *mut World = ptr::null_mut();
-static mut TRIANGLES: *mut Vec<TriangleBuf> = ptr::null_mut();
+static mut TRIANGLES: *mut Vec<TriangleHandle> = ptr::null_mut();
 static mut RNG: *mut Pcg32 = ptr::null_mut();
+static mut ENV: *mut Env = ptr::null_mut();
 
 #[inline(always)]
 fn rng() -> &'static mut Pcg32 {
@@ -127,7 +156,7 @@ fn rng() -> &'static mut Pcg32 {
 }
 
 #[inline(always)]
-fn triangles() -> &'static mut Vec<TriangleBuf> {
+fn triangles() -> &'static mut Vec<TriangleHandle> {
     unsafe { &mut *TRIANGLES }
 }
 
@@ -144,8 +173,8 @@ pub fn init() {
     let p: *mut World = Box::into_raw(world);
     unsafe { COLLISION_WORLD = p };
 
-    let triangles: Box<Vec<TriangleBuf>> = box Vec::with_capacity(200);
-    let p: *mut Vec<TriangleBuf> = Box::into_raw(triangles);
+    let triangles: Box<Vec<TriangleHandle>> = box Vec::with_capacity(200);
+    let p: *mut Vec<TriangleHandle> = Box::into_raw(triangles);
     unsafe { TRIANGLES = p };
 
     let rng_seed: [u8; 16] = unsafe { mem::transmute(1u128) };
@@ -211,7 +240,7 @@ fn check_triangle_collision(t1: &TriangleBuf, t2: &TriangleBuf) -> bool {
 struct TriangleCollisionVisitor<'a> {
     pub triangle: &'a TriangleBuf,
     pub triangle_bv: &'a AABB<f32>,
-    pub triangles: &'a [TriangleBuf],
+    pub triangles: &'a [TriangleHandle],
     pub does_collide: &'a mut bool,
     pub debug: bool,
 }
@@ -237,7 +266,7 @@ impl<'a> BVTVisitor<usize, AABB<f32>> for TriangleCollisionVisitor<'a> {
             ));
         }
 
-        if check_triangle_collision(&self.triangle, &self.triangles[*i]) {
+        if check_triangle_collision(&self.triangle, &self.triangles[*i].geometry) {
             *self.does_collide = true;
         }
     }
@@ -322,103 +351,124 @@ fn find_triangle_placement(
     }
 }
 
-fn generate_triangle(
-    env: &Env,
-    last_triangle: &[Point2<f32>; 3],
-    rotation: &mut f32,
-    i: usize,
-) -> Option<(AABB<f32>, TriangleBuf)> {
-    let Env {
-        conf: Conf {
-            rotation_offset, ..
-        },
-        ..
-    } = env;
-
+fn generate_triangle(env: &mut Env, i: usize) -> Option<(AABB<f32>, TriangleBuf)> {
     // pick one of the other two vertices to use as the new origin
     let (ix, rot_offset) = if rng().gen_range(0, 2) == 0 {
-        (1, deg_to_rad(*rotation_offset))
+        (1, deg_to_rad(env.conf.rotation_offset))
     } else {
-        (2, deg_to_rad(-*rotation_offset))
+        (2, deg_to_rad(-env.conf.rotation_offset))
     };
 
-    let origin = last_triangle[ix];
+    let origin = env.last_triangle[ix];
     for _ in 0..PLACEMENT_ATTEMPTS {
         if let Some((bv, triangle)) =
-            find_triangle_placement(env, origin, *rotation + rot_offset, i)
+            find_triangle_placement(env, origin, env.rotation + rot_offset, i)
         {
-            *rotation += rot_offset;
+            env.rotation += rot_offset;
             return Some((bv, triangle));
         }
     }
 
-    return None; // failed to place a triangle at this origin in `PLACEMENT_ATTTEMPTS` attempts
+    None // failed to place a triangle at this origin in `PLACEMENT_ATTTEMPTS` attempts
+}
+
+fn place_triangle(env: &mut Env, i: usize, triangle_arr_ix: Option<usize>) -> Result<(), ()> {
+    for _ in 0..PLACEMENT_BAILOUT_THRESHOLD {
+        if let Some((bv, triangle)) = generate_triangle(env, i) {
+            let dom_id = render_triangle_array(
+                &triangle,
+                &env.conf.triangle_color,
+                &env.conf.triangle_border_color,
+            );
+            let leaf_id = world().insert(DBVTLeaf::new(
+                bv,
+                triangle_arr_ix.unwrap_or_else(|| triangles().len()),
+            ));
+
+            let handle = TriangleHandle {
+                dom_id,
+                collider_handle: leaf_id,
+                geometry: triangle,
+            };
+            if let Some(i) = triangle_arr_ix {
+                triangles()[i] = handle;
+            } else {
+                triangles().push(handle);
+            }
+
+            env.last_triangle = triangle;
+            return Ok(());
+        }
+
+        // we failed to place a triangle at this origin; we have to pick a new origin point.
+        let ix = rng().gen_range(0, triangles().len());
+        env.last_triangle = triangles()[ix].geometry;
+    }
+
+    common::error(format!(
+        "Failed to place a triangle in {} iterations; bailing out.",
+        PLACEMENT_BAILOUT_THRESHOLD,
+    ));
+    Err(())
 }
 
 #[wasm_bindgen]
 pub fn render(conf_str: &str) {
-    let env = match Env::parse_from_str(conf_str) {
+    let mut env = match Env::parse_from_str(conf_str) {
         Ok(env) => env,
         Err(err) => {
             common::error(err);
             return;
         }
     };
-    let &Env {
-        conf:
-            Conf {
-                canvas_width,
-                canvas_height,
-                triangle_count,
-                triangle_color,
-                triangle_border_color,
-                debug_bounding_boxes,
-                ..
-            },
-        base_triangle_coords,
-        ..
-    } = &env;
-
-    let initial_offset = Vector2::new(canvas_width as f32 / 2.0, canvas_height as f32 / 2.0);
-    let mut last_triangle = [
-        base_triangle_coords[0] + initial_offset,
-        base_triangle_coords[1] + initial_offset,
-        base_triangle_coords[2] + initial_offset,
-    ];
-    let mut rotation = 0.0;
 
     // place `triangle_count` triangles
-    'triangle_generator: for i in 0..triangle_count {
+    'triangle_generator: for i in 0..env.conf.triangle_count {
         // give up placing any more triangles after `PLACEMENT_BAILOUT_THRESHOLD` placement attempts
-        for _ in 0..PLACEMENT_BAILOUT_THRESHOLD {
-            if let Some((bv, triangle)) = generate_triangle(&env, &last_triangle, &mut rotation, i)
-            {
-                render_triangle_array(&triangle, triangle_color, triangle_border_color);
-                triangles().push(triangle);
-                let _leaf_id = world().insert(DBVTLeaf::new(bv, triangles().len() - 1));
-                last_triangle = triangle;
+        match place_triangle(&mut env, i, None) {
+            Ok(()) => {
                 continue 'triangle_generator;
             }
-
-            // we failed to place a triangle at this origin; we have to pick a new origin point.
-            let ix = rng().gen_range(0, triangles().len());
-            last_triangle = triangles()[ix];
+            Err(()) => break,
         }
-
-        common::error(format!(
-            "Failed to place a triangle in {} iterations; bailing out.",
-            PLACEMENT_BAILOUT_THRESHOLD,
-        ));
-        return;
     }
 
-    if debug_bounding_boxes {
+    if env.conf.debug_bounding_boxes {
         world().visit(&mut BoundingBoxDebugVisitor);
+    }
+
+    if unsafe { !ENV.is_null() } {
+        // Drop the old conf to avoid leaking memory from the allocated strings
+        let mut old_env = unsafe { Box::from_raw(ENV) };
+        *old_env = env;
+    } else {
+        let new_env = box env;
+        unsafe { ENV = Box::into_raw(new_env) };
     }
 }
 
+/// Delete the oldest generated triangle and generate a new triangle.
 #[wasm_bindgen]
-pub fn generate() {}
+pub fn generate() {
+    let env: &mut Env = unsafe { &mut *ENV };
+
+    let oldest_triangle = &triangles()[env.oldest_triangle_ix];
+    delete_elem(oldest_triangle.dom_id);
+    world().remove(oldest_triangle.collider_handle);
+
+    match place_triangle(env, env.conf.triangle_count, Some(env.oldest_triangle_ix)) {
+        Ok(()) => (),
+        Err(()) => {
+            return;
+        }
+    };
+
+    if env.oldest_triangle_ix != env.conf.triangle_count - 1 {
+        env.oldest_triangle_ix += 1;
+    } else {
+        env.oldest_triangle_ix = 0;
+    }
+}
 
 #[test]
 fn triangle_intersection() {

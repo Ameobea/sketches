@@ -73,7 +73,7 @@ wasm.then(engine => {
       type: 'range',
       label: 'triangle_count',
       initial: 200,
-      min: 1,
+      min: 3,
       max: 20000,
       steps: 250,
       scale: 'log',

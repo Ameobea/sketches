@@ -87,7 +87,7 @@ struct Env {
 impl Env {
     pub fn parse_from_str(s: &str) -> Result<Self, String> {
         serde_json::from_str(s)
-            .map_err(|err| format!("Error decoding provided conf object: {:?}", err))
+            .map_err(|err| format!("Error decoding provided conf object: {}", 2usize))
             .map(Self::new)
     }
 
@@ -130,6 +130,9 @@ impl Env {
 
     pub fn set_new_last_triangle(&mut self) {
         let ix = rng().gen_range(0, triangles().len());
+        if ix == self.oldest_triangle_ix {
+            return self.set_new_last_triangle();
+        }
         self.last_triangle = triangles()[ix].geometry;
         self.last_triangle_ix = ix;
     }
@@ -283,13 +286,6 @@ impl<'a> BVTVisitor<usize, AABB<f32>> for TriangleCollisionVisitor<'a> {
             return;
         }
 
-        if self.debug {
-            common::log(format!(
-                "Checking collision: {:?} x {:?}",
-                self.triangle, self.triangles[*i]
-            ));
-        }
-
         if check_triangle_collision(&self.triangle, &self.triangles[*i].geometry) {
             *self.does_collide = true;
         }
@@ -350,6 +346,15 @@ fn find_triangle_placement(
         proposed_isometry * base_triangle_coords[1],
         proposed_isometry * base_triangle_coords[2],
     ];
+    let pt_within_canvas = |pt: &Point2<f32>| {
+        pt.x > 0.
+            && pt.x < env.conf.canvas_width as f32
+            && pt.y > 0.
+            && pt.y < env.conf.canvas_height as f32
+    };
+    if proposed_triangle.iter().any(|pt| !pt_within_canvas(pt)) {
+        return None;
+    }
     let (min, max) = bounds(
         proposed_triangle[0],
         proposed_triangle[1],
@@ -385,9 +390,8 @@ fn generate_triangle(env: &mut Env, i: usize) -> Option<(AABB<f32>, TriangleBuf)
 
     let origin = env.last_triangle[ix];
     for _ in 0..PLACEMENT_ATTEMPTS {
-        if let Some((bv, triangle)) =
-            find_triangle_placement(env, origin, env.rotation + rot_offset, i)
-        {
+        let placement_opt = find_triangle_placement(env, origin, env.rotation + rot_offset, i);
+        if let Some((bv, triangle)) = placement_opt {
             env.rotation += rot_offset;
             return Some((bv, triangle));
         }
@@ -396,7 +400,7 @@ fn generate_triangle(env: &mut Env, i: usize) -> Option<(AABB<f32>, TriangleBuf)
     None // failed to place a triangle at this origin in `PLACEMENT_ATTTEMPTS` attempts
 }
 
-fn place_triangle(env: &mut Env, i: usize, triangle_arr_ix: Option<usize>) -> Result<(), ()> {
+fn place_triangle(env: &mut Env, i: usize, insert_at_oldest_ix: bool) -> Result<(), ()> {
     for _ in 0..PLACEMENT_BAILOUT_THRESHOLD {
         if let Some((bv, triangle)) = generate_triangle(env, i) {
             let dom_id = render_triangle_array(
@@ -404,7 +408,11 @@ fn place_triangle(env: &mut Env, i: usize, triangle_arr_ix: Option<usize>) -> Re
                 &env.conf.triangle_color,
                 &env.conf.triangle_border_color,
             );
-            let insertion_ix = triangle_arr_ix.unwrap_or_else(|| triangles().len());
+            let insertion_ix = if insert_at_oldest_ix {
+                env.oldest_triangle_ix
+            } else {
+                triangles().len()
+            };
             let leaf_id = world().insert(DBVTLeaf::new(bv, insertion_ix));
 
             let handle = TriangleHandle {
@@ -419,29 +427,31 @@ fn place_triangle(env: &mut Env, i: usize, triangle_arr_ix: Option<usize>) -> Re
                 next_node_1: None,
                 next_node_2: None,
             };
-            if let Some(i) = triangle_arr_ix {
-                triangles()[i] = handle;
+            if insert_at_oldest_ix {
+                triangles()[env.oldest_triangle_ix] = handle;
             } else {
                 triangles().push(handle);
             }
 
-            env.last_triangle = triangle;
             if env.last_triangle_ix != usize::MAX {
-                match (
-                    triangles()[env.last_triangle_ix].next_node_1,
-                    triangles()[env.last_triangle_ix].next_node_2,
-                ) {
+                let last_triangle = &mut triangles()[env.last_triangle_ix];
+                match (last_triangle.next_node_1, last_triangle.next_node_2) {
                     (Some(_), None) => {
-                        triangles()[env.last_triangle_ix].next_node_2 = Some(insertion_ix)
+                        last_triangle.next_node_2 = Some(insertion_ix);
+                        debug_assert!(last_triangle.next_node_2 != last_triangle.prev_node);
+                        debug_assert!(last_triangle.next_node_2 != last_triangle.next_node_1);
                     }
                     (None, Some(_)) | (None, None) => {
-                        triangles()[env.last_triangle_ix].next_node_1 = Some(insertion_ix)
+                        last_triangle.next_node_1 = Some(insertion_ix);
+                        debug_assert!(last_triangle.next_node_1 != last_triangle.prev_node);
+                        debug_assert!(last_triangle.next_node_1 != last_triangle.next_node_2);
                     }
                     (Some(_), Some(_)) => {
-                        panic!("Tried to add new triangle to triangle with two children")
+                        panic!("Tried to add new triangle to triangle with two children");
                     }
                 }
             }
+            env.last_triangle = triangle;
             env.last_triangle_ix = insertion_ix;
             return Ok(());
         }
@@ -470,7 +480,7 @@ pub fn render(conf_str: &str) {
     // place `triangle_count` triangles
     'triangle_generator: for i in 0..env.conf.triangle_count {
         // give up placing any more triangles after `PLACEMENT_BAILOUT_THRESHOLD` placement attempts
-        match place_triangle(&mut env, i, None) {
+        match place_triangle(&mut env, i, false) {
             Ok(()) => {
                 continue 'triangle_generator;
             }
@@ -494,21 +504,37 @@ pub fn render(conf_str: &str) {
 /// Delete the oldest generated triangle and generate a new triangle.
 #[wasm_bindgen]
 pub fn generate() {
-    let env: &mut Env = unsafe { &mut *ENV };
+    let assert_handle_valid = |handle: &TriangleHandle| {
+        debug_assert!(handle.degree() != 0);
+        debug_assert!(!(handle.next_node_1 == handle.next_node_2 && handle.next_node_1.is_some()));
+        debug_assert!(!(handle.next_node_1 == handle.prev_node && handle.next_node_1.is_some()));
+        debug_assert!(!(handle.next_node_2 == handle.prev_node && handle.next_node_2.is_some()));
+    };
+    triangles().iter().for_each(assert_handle_valid);
 
-    let mut reset_count = 0;
-    while env.oldest_triangle_ix == env.last_triangle_ix {
+    let env: &mut Env = unsafe { &mut *ENV };
+    if env.oldest_triangle_ix == env.last_triangle_ix {
         env.set_new_last_triangle();
-        reset_count += 1;
-        if reset_count == triangles().len() * 16 {
-            common::error("Unable to find a triangle to use as a base; bailing out.");
-            return;
+    }
+
+    fn child_degree_is_not_one(link: &Option<usize>) -> bool {
+        if let Some(child_ix) = link {
+            triangles()[*child_ix].degree() != 1
+        } else {
+            true
         }
     }
 
     let triangle_valid = if env.oldest_triangle_ix != usize::MAX {
         let oldest_triangle = &triangles()[env.oldest_triangle_ix];
-        let triangle_valid = oldest_triangle.degree() == 1;
+        let triangle_valid = oldest_triangle.degree() == 1
+            && [
+                oldest_triangle.prev_node,
+                oldest_triangle.next_node_1,
+                oldest_triangle.next_node_2,
+            ]
+            .iter()
+            .all(child_degree_is_not_one);
         if triangle_valid {
             delete_elem(oldest_triangle.dom_id);
             world().remove(oldest_triangle.collider_handle);
@@ -530,9 +556,9 @@ pub fn generate() {
                 triangles()[child_ix].prev_node = None;
             }
 
-            match place_triangle(env, env.conf.triangle_count, Some(env.oldest_triangle_ix)) {
+            match place_triangle(env, env.conf.triangle_count, true) {
                 Ok(()) => (),
-                Err(()) => common::error("Unable to place new triangle"),
+                Err(()) => panic!("Unable to place new triangle"),
             };
         }
         triangle_valid

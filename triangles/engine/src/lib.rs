@@ -78,6 +78,7 @@ struct Env {
     pub triangle_offset_y: f32,
     pub base_triangle_coords: TriangleBuf,
     pub last_triangle: TriangleBuf,
+    pub last_triangle_ix: usize,
     pub rotation: f32,
     pub oldest_triangle_ix: usize,
 }
@@ -119,10 +120,17 @@ impl Env {
             triangle_offset_x,
             triangle_offset_y,
             base_triangle_coords,
+            last_triangle_ix: 0,
             last_triangle,
             rotation,
             oldest_triangle_ix: 0,
         }
+    }
+
+    pub fn set_new_last_triangle(&mut self) {
+        let ix = rng().gen_range(0, triangles().len());
+        self.last_triangle = triangles()[ix].geometry;
+        self.last_triangle_ix = ix;
     }
 }
 
@@ -131,6 +139,21 @@ struct TriangleHandle {
     pub geometry: TriangleBuf,
     pub collider_handle: DBVTLeafId,
     pub dom_id: usize,
+    pub prev_node: Option<usize>,
+    pub next_node_1: Option<usize>,
+    pub next_node_2: Option<usize>,
+}
+
+impl TriangleHandle {
+    pub fn degree(&self) -> usize {
+        let mut degree = 0;
+        for link in &[self.prev_node, self.next_node_1, self.next_node_2] {
+            if link.is_some() {
+                degree += 1;
+            }
+        }
+        degree
+    }
 }
 
 #[inline(always)]
@@ -380,15 +403,16 @@ fn place_triangle(env: &mut Env, i: usize, triangle_arr_ix: Option<usize>) -> Re
                 &env.conf.triangle_color,
                 &env.conf.triangle_border_color,
             );
-            let leaf_id = world().insert(DBVTLeaf::new(
-                bv,
-                triangle_arr_ix.unwrap_or_else(|| triangles().len()),
-            ));
+            let insertion_ix = triangle_arr_ix.unwrap_or_else(|| triangles().len());
+            let leaf_id = world().insert(DBVTLeaf::new(bv, insertion_ix));
 
             let handle = TriangleHandle {
                 dom_id,
                 collider_handle: leaf_id,
                 geometry: triangle,
+                prev_node: Some(env.last_triangle_ix),
+                next_node_1: None,
+                next_node_2: None,
             };
             if let Some(i) = triangle_arr_ix {
                 triangles()[i] = handle;
@@ -397,12 +421,26 @@ fn place_triangle(env: &mut Env, i: usize, triangle_arr_ix: Option<usize>) -> Re
             }
 
             env.last_triangle = triangle;
+            match (
+                triangles()[env.last_triangle_ix].next_node_1,
+                triangles()[env.last_triangle_ix].next_node_2,
+            ) {
+                (Some(_), None) => {
+                    triangles()[env.last_triangle_ix].next_node_2 = Some(insertion_ix)
+                }
+                (None, Some(_)) | (None, None) => {
+                    triangles()[env.last_triangle_ix].next_node_1 = Some(insertion_ix)
+                }
+                (Some(_), Some(_)) => {
+                    panic!("Tried to add new triangle to triangle with two children")
+                }
+            }
+            env.last_triangle_ix = insertion_ix;
             return Ok(());
         }
 
         // we failed to place a triangle at this origin; we have to pick a new origin point.
-        let ix = rng().gen_range(0, triangles().len());
-        env.last_triangle = triangles()[ix].geometry;
+        env.set_new_last_triangle();
     }
 
     common::error(format!(
@@ -439,12 +477,11 @@ pub fn render(conf_str: &str) {
 
     if unsafe { !ENV.is_null() } {
         // Drop the old conf to avoid leaking memory from the allocated strings
-        let mut old_env = unsafe { Box::from_raw(ENV) };
-        *old_env = env;
-    } else {
-        let new_env = box env;
-        unsafe { ENV = Box::into_raw(new_env) };
+        let old_env = unsafe { Box::from_raw(ENV) };
+        drop(old_env);
     }
+    let new_env = box env;
+    unsafe { ENV = Box::into_raw(new_env) };
 }
 
 /// Delete the oldest generated triangle and generate a new triangle.
@@ -452,21 +489,55 @@ pub fn render(conf_str: &str) {
 pub fn generate() {
     let env: &mut Env = unsafe { &mut *ENV };
 
-    let oldest_triangle = &triangles()[env.oldest_triangle_ix];
-    delete_elem(oldest_triangle.dom_id);
-    world().remove(oldest_triangle.collider_handle);
-
-    match place_triangle(env, env.conf.triangle_count, Some(env.oldest_triangle_ix)) {
-        Ok(()) => (),
-        Err(()) => {
+    let mut oldest_triangle = &triangles()[env.oldest_triangle_ix];
+    let mut reset_count = 0;
+    while oldest_triangle.geometry[0] == env.last_triangle[0] {
+        env.set_new_last_triangle();
+        oldest_triangle = &triangles()[env.oldest_triangle_ix];
+        reset_count += 1;
+        if reset_count == triangles().len() * 16 {
+            common::error("Unable to find a triangle to use as a base; bailing out.");
             return;
         }
-    };
+    }
+    let triangle_valid = oldest_triangle.degree() == 1;
+    if triangle_valid {
+        delete_elem(oldest_triangle.dom_id);
+        world().remove(oldest_triangle.collider_handle);
+        if let Some(prev_ix) = oldest_triangle.prev_node {
+            if triangles()[prev_ix].next_node_1 == Some(env.oldest_triangle_ix) {
+                triangles()[prev_ix].next_node_1 = None;
+            } else if triangles()[prev_ix].next_node_2 == Some(env.oldest_triangle_ix) {
+                triangles()[prev_ix].next_node_2 = None;
+            } else {
+                panic!("Tried to delete triangle but its parent doesn't list it as its child");
+            }
+        }
+        if let Some(child_ix) = oldest_triangle.next_node_1 {
+            debug_assert!(triangles()[child_ix].prev_node == Some(env.oldest_triangle_ix));
+            triangles()[child_ix].prev_node = None;
+        }
+        if let Some(child_ix) = oldest_triangle.next_node_2 {
+            debug_assert!(triangles()[child_ix].prev_node == Some(env.oldest_triangle_ix));
+            triangles()[child_ix].prev_node = None;
+        }
+
+        match place_triangle(env, env.conf.triangle_count, Some(env.oldest_triangle_ix)) {
+            Ok(()) => (),
+            Err(()) => {
+                return;
+            }
+        };
+    }
 
     if env.oldest_triangle_ix != env.conf.triangle_count - 1 {
         env.oldest_triangle_ix += 1;
     } else {
         env.oldest_triangle_ix = 0;
+    }
+
+    if !triangle_valid {
+        generate();
     }
 }
 

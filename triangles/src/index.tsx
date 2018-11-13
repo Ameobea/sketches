@@ -18,12 +18,13 @@ export const render_triangle = (
   color: string,
   border_color: string
 ) => {
+  renderIx += 1;
   const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
   poly.setAttribute('points', `${x1},${y1} ${x2},${y2} ${x3},${y3}`);
   poly.setAttribute('style', `fill:${color};stroke:${border_color};stroke-width:1`);
   poly.setAttribute('id', `poly-${renderIx}`);
-  renderIx += 1;
   SVG.appendChild(poly);
+  console.log('create', renderIx);
   return renderIx;
 };
 
@@ -45,7 +46,7 @@ export const render_quad = (
 };
 
 export const delete_elem = (id: number) =>
-  console.log(id) || document.getElementById(`poly-${id}`)!.remove();
+  console.log('del', id) || document.getElementById(`poly-${id}`)!.remove();
 
 const deleteAllChildren = (node: HTMLElement) => {
   while (node.firstChild) {

@@ -52,6 +52,16 @@ const deleteAllChildren = (node: HTMLElement) => {
   }
 };
 
+/**
+ *
+ * @param rgbString An RGB string like "rgb(12, 35, 232)"
+ */
+const parseRgbString = (rgbString: string): number[] =>
+  /rgb\((\d+), ?(\d+), ?(\d+)\)/
+    .exec(rgbString)!
+    .splice(1, 4)
+    .map(s => parseInt(s));
+
 wasm.then(engine => {
   engine.init();
 
@@ -61,14 +71,14 @@ wasm.then(engine => {
 
   const settings = [
     { type: 'range', label: 'prng_seed', min: 0, max: 1, steps: 1000, initial: 0.5 },
-    { type: 'range', label: 'canvas_width', min: 100, max: 1000, initial: 800 },
-    { type: 'range', label: 'canvas_height', min: 100, max: 1000, initial: 800 },
-    { type: 'range', label: 'triangle_size', min: 1.0, max: 50.0, step: 0.5, initial: 10.0 },
+    { type: 'range', label: 'canvas_width', min: 100, max: 2000, initial: 1600 },
+    { type: 'range', label: 'canvas_height', min: 100, max: 1600, initial: 800 },
+    { type: 'range', label: 'triangle_size', min: 1.0, max: 50.0, step: 0.5, initial: 23.5 },
     // TODO: handle these client side
-    { type: 'color', label: 'triangle_border_color', initial: '#7c007c', format: 'rgb' }, // rgb(50, 115, 3)
-    { type: 'color', label: 'triangle_color', initial: 'rgb(81, 12, 84)', format: 'rgb' }, // rgb(12, 84, 22)
+    { type: 'color', label: 'color_gradient_start', initial: 'rgb(124, 0, 124)', format: 'rgb' },
+    { type: 'color', label: 'color_gradient_end', initial: 'rgb(81, 12, 84)', format: 'rgb' },
     { type: 'color', label: 'background_color', initial: '#080808', format: 'hex' },
-    { type: 'range', label: 'rotation_offset', min: -180, max: 180, initial: 60, steps: 250 },
+    { type: 'range', label: 'rotation_offset', min: -180, max: 180, initial: 34.56, steps: 250 },
     {
       type: 'range',
       label: 'triangle_count',
@@ -80,7 +90,7 @@ wasm.then(engine => {
     },
     { type: 'range', label: 'max_rotation_rads', initial: 0.5, min: 0.0, max: Math.PI },
     { type: 'checkbox', label: 'debug_bounding_boxes', initial: false },
-    { type: 'range', label: 'generation_rate', min: 0, max: 60, steps: 60, initial: 20 },
+    { type: 'range', label: 'generation_rate', min: 0, max: 60, steps: 60, initial: 40 },
     {
       type: 'button',
       label: 'start_generating',
@@ -116,9 +126,15 @@ wasm.then(engine => {
         deleteAllChildren(SVG);
 
         engine.render(
-          JSON.stringify({ ...state, triangle_count: Math.round(state.triangle_count) })
+          JSON.stringify({
+            ...state,
+            triangle_count: Math.round(state.triangle_count),
+            color_gradient_start: parseRgbString(state.color_gradient_start),
+            color_gradient_end: parseRgbString(state.color_gradient_end),
+          })
         );
       }}
+      ctxCb={ctx => console.log(ctx)}
       width={500}
     />
   );

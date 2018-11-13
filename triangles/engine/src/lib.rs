@@ -10,6 +10,7 @@ extern crate serde_json;
 extern crate wasm_bindgen;
 #[macro_use]
 extern crate serde_derive;
+extern crate palette;
 
 use std::f32;
 use std::mem;
@@ -19,6 +20,8 @@ use std::usize;
 use nalgebra::{Isometry2, Point2, Vector2};
 use ncollide2d::bounding_volume::{aabb::AABB, BoundingVolume};
 use ncollide2d::partitioning::{BVTVisitor, DBVTLeaf, DBVTLeafId, DBVT};
+use palette::rgb::LinSrgb;
+use palette::{Color, Gradient, Saturate};
 use rand::Rng;
 use rand_core::SeedableRng;
 use rand_pcg::Pcg32;
@@ -54,8 +57,8 @@ pub struct Conf {
     pub triangle_size: f32,
     pub triangle_count: usize,
     pub max_rotation_rads: f32,
-    pub triangle_color: String,
-    pub triangle_border_color: String,
+    pub color_gradient_start: [u8; 3],
+    pub color_gradient_end: [u8; 3],
     pub rotation_offset: f32,
     pub debug_bounding_boxes: bool,
     pub generation_rate: f32,
@@ -73,6 +76,61 @@ impl Conf {
     }
 }
 
+#[inline(always)]
+const fn color_to_f(byte: u8) -> f32 {
+    (byte as f32) / 255.
+}
+
+#[inline(always)]
+const fn color_from_f(f: f32) -> u8 {
+    (f * 255.) as u8
+}
+
+fn format_color(color: LinSrgb) -> String {
+    format!(
+        "rgb({}, {}, {})",
+        color_from_f(color.red),
+        color_from_f(color.green),
+        color_from_f(color.blue)
+    )
+}
+
+fn create_gradient(start_color: &[u8; 3], end_color: &[u8; 3]) -> Gradient<LinSrgb> {
+    let start_color = LinSrgb::new(
+        color_to_f(start_color[0]),
+        color_to_f(start_color[1]),
+        color_to_f(start_color[2]),
+    );
+    let end_color = LinSrgb::new(
+        color_to_f(end_color[0]),
+        color_to_f(end_color[1]),
+        color_to_f(end_color[2]),
+    );
+    Gradient::with_domain(vec![
+        (0.0, start_color),
+        (0.5, end_color),
+        (1.0, start_color),
+    ])
+}
+
+#[inline(always)]
+fn get_triangle(i: usize) -> &'static TriangleHandle {
+    if cfg!(debug_assertions) {
+        &triangles()[i]
+    } else {
+        unsafe { triangles().get_unchecked(i) }
+    }
+}
+
+#[inline(always)]
+fn get_triangle_mut(i: usize) -> &'static mut TriangleHandle {
+    if cfg!(debug_assertions) {
+        &mut triangles()[i]
+    } else {
+        unsafe { triangles().get_unchecked_mut(i) }
+    }
+}
+
 struct Env {
     pub conf: Conf,
     pub triangle_offset_x: f32,
@@ -82,12 +140,13 @@ struct Env {
     pub last_triangle_ix: usize,
     pub rotation: f32,
     pub oldest_triangle_ix: usize,
+    pub gradient: Gradient<LinSrgb>,
 }
 
 impl Env {
     pub fn parse_from_str(s: &str) -> Result<Self, String> {
         serde_json::from_str(s)
-            .map_err(|err| format!("Error decoding provided conf object: {}", 2usize))
+            .map_err(|err| format!("Error decoding provided conf object: {:?}", err))
             .map(Self::new)
     }
 
@@ -115,6 +174,7 @@ impl Env {
             base_triangle_coords[2] + initial_offset,
         ];
         let rotation = 0.0;
+        let gradient = create_gradient(&conf.color_gradient_start, &conf.color_gradient_end);
 
         Env {
             conf,
@@ -125,6 +185,7 @@ impl Env {
             last_triangle,
             rotation,
             oldest_triangle_ix: usize::MAX,
+            gradient,
         }
     }
 
@@ -133,7 +194,7 @@ impl Env {
         if ix == self.oldest_triangle_ix {
             return self.set_new_last_triangle();
         }
-        self.last_triangle = triangles()[ix].geometry;
+        self.last_triangle = get_triangle(ix).geometry;
         self.last_triangle_ix = ix;
     }
 }
@@ -146,6 +207,7 @@ struct TriangleHandle {
     pub prev_node: Option<usize>,
     pub next_node_1: Option<usize>,
     pub next_node_2: Option<usize>,
+    pub gradient_ix: f32,
 }
 
 impl TriangleHandle {
@@ -403,11 +465,25 @@ fn generate_triangle(env: &mut Env, i: usize) -> Option<(AABB<f32>, TriangleBuf)
 fn place_triangle(env: &mut Env, i: usize, insert_at_oldest_ix: bool) -> Result<(), ()> {
     for _ in 0..PLACEMENT_BAILOUT_THRESHOLD {
         if let Some((bv, triangle)) = generate_triangle(env, i) {
-            let dom_id = render_triangle_array(
-                &triangle,
-                &env.conf.triangle_color,
-                &env.conf.triangle_border_color,
+            let (prev_node, gradient_ix) = if env.last_triangle_ix == usize::MAX {
+                (None, 0.0)
+            } else {
+                (
+                    Some(env.last_triangle_ix),
+                    (get_triangle(env.last_triangle_ix).gradient_ix + 0.01) % 1.0,
+                )
+            };
+            let color: LinSrgb = env.gradient.get(gradient_ix);
+            let border_color = LinSrgb::new(
+                (color.red + 0.05).min(1.0),
+                (color.green + 0.05).min(1.0),
+                (color.blue + 0.05).min(1.0),
             );
+            let border_color: LinSrgb = Color::Rgb(border_color).saturate(1.0).into();
+            let color_s = format_color(color);
+            let border_color_s = format_color(border_color);
+            // common::log(color_s);
+            let dom_id = render_triangle_array(&triangle, &color_s, &border_color_s);
             let insertion_ix = if insert_at_oldest_ix {
                 env.oldest_triangle_ix
             } else {
@@ -419,22 +495,19 @@ fn place_triangle(env: &mut Env, i: usize, insert_at_oldest_ix: bool) -> Result<
                 dom_id,
                 collider_handle: leaf_id,
                 geometry: triangle,
-                prev_node: if env.last_triangle_ix == usize::MAX {
-                    None
-                } else {
-                    Some(env.last_triangle_ix)
-                },
+                prev_node,
                 next_node_1: None,
                 next_node_2: None,
+                gradient_ix,
             };
             if insert_at_oldest_ix {
-                triangles()[env.oldest_triangle_ix] = handle;
+                *get_triangle_mut(env.oldest_triangle_ix) = handle;
             } else {
                 triangles().push(handle);
             }
 
             if env.last_triangle_ix != usize::MAX {
-                let last_triangle = &mut triangles()[env.last_triangle_ix];
+                let last_triangle = &mut get_triangle_mut(env.last_triangle_ix);
                 match (last_triangle.next_node_1, last_triangle.next_node_2) {
                     (Some(_), None) => {
                         last_triangle.next_node_2 = Some(insertion_ix);
@@ -519,14 +592,14 @@ pub fn generate() {
 
     fn child_degree_is_not_one(link: &Option<usize>) -> bool {
         if let Some(child_ix) = link {
-            triangles()[*child_ix].degree() != 1
+            get_triangle(*child_ix).degree() != 1
         } else {
             true
         }
     }
 
     let triangle_valid = if env.oldest_triangle_ix != usize::MAX {
-        let oldest_triangle = &triangles()[env.oldest_triangle_ix];
+        let oldest_triangle = &get_triangle(env.oldest_triangle_ix);
         let triangle_valid = oldest_triangle.degree() == 1
             && [
                 oldest_triangle.prev_node,
@@ -539,21 +612,21 @@ pub fn generate() {
             delete_elem(oldest_triangle.dom_id);
             world().remove(oldest_triangle.collider_handle);
             if let Some(prev_ix) = oldest_triangle.prev_node {
-                if triangles()[prev_ix].next_node_1 == Some(env.oldest_triangle_ix) {
-                    triangles()[prev_ix].next_node_1 = None;
-                } else if triangles()[prev_ix].next_node_2 == Some(env.oldest_triangle_ix) {
-                    triangles()[prev_ix].next_node_2 = None;
+                if get_triangle(prev_ix).next_node_1 == Some(env.oldest_triangle_ix) {
+                    get_triangle_mut(prev_ix).next_node_1 = None;
+                } else if get_triangle(prev_ix).next_node_2 == Some(env.oldest_triangle_ix) {
+                    get_triangle_mut(prev_ix).next_node_2 = None;
                 } else {
                     panic!("Tried to delete triangle but its parent doesn't list it as its child");
                 }
             }
             if let Some(child_ix) = oldest_triangle.next_node_1 {
-                debug_assert!(triangles()[child_ix].prev_node == Some(env.oldest_triangle_ix));
-                triangles()[child_ix].prev_node = None;
+                debug_assert!(get_triangle(child_ix).prev_node == Some(env.oldest_triangle_ix));
+                get_triangle_mut(child_ix).prev_node = None;
             }
             if let Some(child_ix) = oldest_triangle.next_node_2 {
-                debug_assert!(triangles()[child_ix].prev_node == Some(env.oldest_triangle_ix));
-                triangles()[child_ix].prev_node = None;
+                debug_assert!(get_triangle(child_ix).prev_node == Some(env.oldest_triangle_ix));
+                get_triangle_mut(child_ix).prev_node = None;
             }
 
             match place_triangle(env, env.conf.triangle_count, true) {

@@ -14,6 +14,7 @@ extern crate serde_derive;
 use std::f32;
 use std::mem;
 use std::ptr;
+use std::usize;
 
 use nalgebra::{Isometry2, Point2, Vector2};
 use ncollide2d::bounding_volume::{aabb::AABB, BoundingVolume};
@@ -120,10 +121,10 @@ impl Env {
             triangle_offset_x,
             triangle_offset_y,
             base_triangle_coords,
-            last_triangle_ix: 0,
+            last_triangle_ix: usize::MAX,
             last_triangle,
             rotation,
-            oldest_triangle_ix: 0,
+            oldest_triangle_ix: usize::MAX,
         }
     }
 
@@ -410,7 +411,11 @@ fn place_triangle(env: &mut Env, i: usize, triangle_arr_ix: Option<usize>) -> Re
                 dom_id,
                 collider_handle: leaf_id,
                 geometry: triangle,
-                prev_node: Some(env.last_triangle_ix),
+                prev_node: if env.last_triangle_ix == usize::MAX {
+                    None
+                } else {
+                    Some(env.last_triangle_ix)
+                },
                 next_node_1: None,
                 next_node_2: None,
             };
@@ -421,18 +426,20 @@ fn place_triangle(env: &mut Env, i: usize, triangle_arr_ix: Option<usize>) -> Re
             }
 
             env.last_triangle = triangle;
-            match (
-                triangles()[env.last_triangle_ix].next_node_1,
-                triangles()[env.last_triangle_ix].next_node_2,
-            ) {
-                (Some(_), None) => {
-                    triangles()[env.last_triangle_ix].next_node_2 = Some(insertion_ix)
-                }
-                (None, Some(_)) | (None, None) => {
-                    triangles()[env.last_triangle_ix].next_node_1 = Some(insertion_ix)
-                }
-                (Some(_), Some(_)) => {
-                    panic!("Tried to add new triangle to triangle with two children")
+            if env.last_triangle_ix != usize::MAX {
+                match (
+                    triangles()[env.last_triangle_ix].next_node_1,
+                    triangles()[env.last_triangle_ix].next_node_2,
+                ) {
+                    (Some(_), None) => {
+                        triangles()[env.last_triangle_ix].next_node_2 = Some(insertion_ix)
+                    }
+                    (None, Some(_)) | (None, None) => {
+                        triangles()[env.last_triangle_ix].next_node_1 = Some(insertion_ix)
+                    }
+                    (Some(_), Some(_)) => {
+                        panic!("Tried to add new triangle to triangle with two children")
+                    }
                 }
             }
             env.last_triangle_ix = insertion_ix;
@@ -489,48 +496,51 @@ pub fn render(conf_str: &str) {
 pub fn generate() {
     let env: &mut Env = unsafe { &mut *ENV };
 
-    let mut oldest_triangle = &triangles()[env.oldest_triangle_ix];
     let mut reset_count = 0;
-    while oldest_triangle.geometry[0] == env.last_triangle[0] {
+    while env.oldest_triangle_ix == env.last_triangle_ix {
         env.set_new_last_triangle();
-        oldest_triangle = &triangles()[env.oldest_triangle_ix];
         reset_count += 1;
         if reset_count == triangles().len() * 16 {
             common::error("Unable to find a triangle to use as a base; bailing out.");
             return;
         }
     }
-    let triangle_valid = oldest_triangle.degree() == 1;
-    if triangle_valid {
-        delete_elem(oldest_triangle.dom_id);
-        world().remove(oldest_triangle.collider_handle);
-        if let Some(prev_ix) = oldest_triangle.prev_node {
-            if triangles()[prev_ix].next_node_1 == Some(env.oldest_triangle_ix) {
-                triangles()[prev_ix].next_node_1 = None;
-            } else if triangles()[prev_ix].next_node_2 == Some(env.oldest_triangle_ix) {
-                triangles()[prev_ix].next_node_2 = None;
-            } else {
-                panic!("Tried to delete triangle but its parent doesn't list it as its child");
-            }
-        }
-        if let Some(child_ix) = oldest_triangle.next_node_1 {
-            debug_assert!(triangles()[child_ix].prev_node == Some(env.oldest_triangle_ix));
-            triangles()[child_ix].prev_node = None;
-        }
-        if let Some(child_ix) = oldest_triangle.next_node_2 {
-            debug_assert!(triangles()[child_ix].prev_node == Some(env.oldest_triangle_ix));
-            triangles()[child_ix].prev_node = None;
-        }
 
-        match place_triangle(env, env.conf.triangle_count, Some(env.oldest_triangle_ix)) {
-            Ok(()) => (),
-            Err(()) => {
-                return;
+    let triangle_valid = if env.oldest_triangle_ix != usize::MAX {
+        let oldest_triangle = &triangles()[env.oldest_triangle_ix];
+        let triangle_valid = oldest_triangle.degree() == 1;
+        if triangle_valid {
+            delete_elem(oldest_triangle.dom_id);
+            world().remove(oldest_triangle.collider_handle);
+            if let Some(prev_ix) = oldest_triangle.prev_node {
+                if triangles()[prev_ix].next_node_1 == Some(env.oldest_triangle_ix) {
+                    triangles()[prev_ix].next_node_1 = None;
+                } else if triangles()[prev_ix].next_node_2 == Some(env.oldest_triangle_ix) {
+                    triangles()[prev_ix].next_node_2 = None;
+                } else {
+                    panic!("Tried to delete triangle but its parent doesn't list it as its child");
+                }
             }
-        };
-    }
+            if let Some(child_ix) = oldest_triangle.next_node_1 {
+                debug_assert!(triangles()[child_ix].prev_node == Some(env.oldest_triangle_ix));
+                triangles()[child_ix].prev_node = None;
+            }
+            if let Some(child_ix) = oldest_triangle.next_node_2 {
+                debug_assert!(triangles()[child_ix].prev_node == Some(env.oldest_triangle_ix));
+                triangles()[child_ix].prev_node = None;
+            }
 
-    if env.oldest_triangle_ix != env.conf.triangle_count - 1 {
+            match place_triangle(env, env.conf.triangle_count, Some(env.oldest_triangle_ix)) {
+                Ok(()) => (),
+                Err(()) => common::error("Unable to place new triangle"),
+            };
+        }
+        triangle_valid
+    } else {
+        false
+    };
+
+    if env.oldest_triangle_ix < env.conf.triangle_count - 1 {
         env.oldest_triangle_ix += 1;
     } else {
         env.oldest_triangle_ix = 0;

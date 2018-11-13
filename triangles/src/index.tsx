@@ -24,7 +24,6 @@ export const render_triangle = (
   poly.setAttribute('style', `fill:${color};stroke:${border_color};stroke-width:1`);
   poly.setAttribute('id', `poly-${renderIx}`);
   SVG.appendChild(poly);
-  console.log('create', renderIx);
   return renderIx;
 };
 
@@ -45,8 +44,7 @@ export const render_quad = (
   SVG.appendChild(rect);
 };
 
-export const delete_elem = (id: number) =>
-  console.log('del', id) || document.getElementById(`poly-${id}`)!.remove();
+export const delete_elem = (id: number) => document.getElementById(`poly-${id}`)!.remove();
 
 const deleteAllChildren = (node: HTMLElement) => {
   while (node.firstChild) {
@@ -56,6 +54,10 @@ const deleteAllChildren = (node: HTMLElement) => {
 
 wasm.then(engine => {
   engine.init();
+
+  let frame = 0;
+  let genDelayMs: number = 1000.0 / 20.0;
+  let genIntervalHandle: number | undefined = undefined;
 
   const settings = [
     { type: 'range', label: 'prng_seed', min: 0, max: 1, steps: 1000, initial: 0.5 },
@@ -78,9 +80,22 @@ wasm.then(engine => {
     },
     { type: 'range', label: 'max_rotation_rads', initial: 0.5, min: 0.0, max: Math.PI },
     { type: 'checkbox', label: 'debug_bounding_boxes', initial: false },
-    { type: 'range', label: 'generation_rate', min: 0.0, max: 10.0, steps: 200, initial: 4.0 },
-    { type: 'button', label: 'start_generating', action: () => engine.generate() },
-    { type: 'button', label: 'stop_generating', action: () => {} },
+    { type: 'range', label: 'generation_rate', min: 0, max: 60, steps: 60, initial: 20 },
+    {
+      type: 'button',
+      label: 'start_generating',
+      action: () => {
+        genIntervalHandle = setInterval(engine.generate, genDelayMs);
+      },
+    },
+    {
+      type: 'button',
+      label: 'stop_generating',
+      action: () => {
+        clearInterval(genIntervalHandle);
+        genIntervalHandle = undefined;
+      },
+    },
   ];
 
   const App = () => (
@@ -92,6 +107,12 @@ wasm.then(engine => {
         SVG.setAttribute('height', state.canvas_height);
         SVG.setAttribute('width', state.canvas_width);
         SVG.setAttribute('style', `background-color: ${state.background_color};`);
+        const newGenDelayMs = 1000.0 / state.generation_rate;
+        if (genDelayMs != newGenDelayMs) {
+          genDelayMs = newGenDelayMs;
+          clearInterval(genIntervalHandle);
+          setInterval(engine.generate, genDelayMs);
+        }
         deleteAllChildren(SVG);
 
         engine.render(

@@ -43,8 +43,9 @@ extern "C" {
 
 type TriangleBuf = [Point2<f32>; 3];
 
-const PLACEMENT_ATTEMPTS: usize = 3;
+const PLACEMENT_ATTEMPTS: usize = 5;
 const PLACEMENT_BAILOUT_THRESHOLD: usize = 1000;
+const CHAIN_COUNT: usize = 3;
 
 #[derive(Deserialize)]
 pub struct Conf {
@@ -73,7 +74,52 @@ impl Conf {
     }
 }
 
+fn get_triangle_bv(triangle: &TriangleBuf) -> AABB<f32> {
+    let (min, max) = bounds(triangle[0], triangle[1], triangle[2]);
+    AABB::new(min, max)
+}
+
+fn get_initial_triangle(
+    chain_ix: usize,
+    conf: &Conf,
+    base_triangle_coords: &TriangleBuf,
+) -> (TriangleBuf, f32) {
+    let initial_offset = Vector2::new(
+        rng().gen_range(
+            conf.triangle_size,
+            conf.canvas_width as f32 - conf.triangle_size,
+        ),
+        rng().gen_range(
+            conf.triangle_size,
+            conf.canvas_height as f32 - conf.triangle_size,
+        ),
+    );
+    let rotation = rng().gen_range(0.0, f32::consts::PI / 2.0);
+    let proposed_first_triangle = [
+        base_triangle_coords[0] + initial_offset,
+        base_triangle_coords[1] + initial_offset,
+        base_triangle_coords[2] + initial_offset,
+    ];
+    // verify that this proposed initial triangle doesn't intersect any existing triangles
+    let bounding_box = get_triangle_bv(&proposed_first_triangle);
+    let mut does_collide = false;
+    let mut visitor = TriangleCollisionVisitor {
+        triangle: &proposed_first_triangle,
+        triangle_bv: &bounding_box,
+        triangles: unsafe { &*TRIANGLES },
+        does_collide: &mut does_collide,
+        debug: false,
+    };
+    world().visit(&mut visitor);
+    if does_collide {
+        return get_initial_triangle(chain_ix, conf, base_triangle_coords);
+    }
+
+    (proposed_first_triangle, rotation)
+}
+
 struct Env {
+    pub chain_ix: usize,
     pub conf: Conf,
     pub triangle_offset_x: f32,
     pub triangle_offset_y: f32,
@@ -85,38 +131,27 @@ struct Env {
 }
 
 impl Env {
-    pub fn parse_from_str(s: &str) -> Result<Self, String> {
+    pub fn parse_from_str(s: &str, chain_ix: usize) -> Result<Self, String> {
         serde_json::from_str(s)
-            .map_err(|err| format!("Error decoding provided conf object: {}", 2usize))
-            .map(Self::new)
+            .map_err(|err| format!("Error decoding provided conf object: {:?}", err))
+            .map(|conf| Self::new(conf, chain_ix))
     }
 
-    pub fn new(conf: Conf) -> Self {
-        let (triangle_offset_x, triangle_offset_y) = conf.get_base_triangle_offsets();
-        // Clear out the collision world, empty the geometry buffer, + reseed PRNG
-        let world = unsafe { &mut *COLLISION_WORLD };
-        let triangles = unsafe { &mut *TRIANGLES };
-        *world = DBVT::new();
-        triangles.clear();
+    pub fn new(conf: Conf, chain_ix: usize) -> Self {
+        // Re-seed the global PRNG
         *rng() = Pcg32::from_seed(unsafe { mem::transmute((conf.prng_seed, conf.prng_seed)) });
+        let (triangle_offset_x, triangle_offset_y) = conf.get_base_triangle_offsets();
 
         let base_triangle_coords = [
             Point2::origin(),
             p2(-triangle_offset_x, triangle_offset_y),
             p2(triangle_offset_x, triangle_offset_y),
         ];
-        let initial_offset = Vector2::new(
-            conf.canvas_width as f32 / 2.0,
-            conf.canvas_height as f32 / 2.0,
-        );
-        let last_triangle = [
-            base_triangle_coords[0] + initial_offset,
-            base_triangle_coords[1] + initial_offset,
-            base_triangle_coords[2] + initial_offset,
-        ];
-        let rotation = 0.0;
+        let (last_triangle, rotation) =
+            get_initial_triangle(chain_ix, &conf, &base_triangle_coords);
 
         Env {
+            chain_ix,
             conf,
             triangle_offset_x,
             triangle_offset_y,
@@ -129,12 +164,42 @@ impl Env {
     }
 
     pub fn set_new_last_triangle(&mut self) {
-        let ix = rng().gen_range(0, triangles().len());
+        let triangle_count = triangles(self.chain_ix).len();
+        if triangle_count == 0 {
+            let (triangle, rotation) =
+                get_initial_triangle(self.chain_ix, &self.conf, &self.base_triangle_coords);
+            self.rotation = rotation;
+            self.last_triangle = triangle;
+            self.last_triangle_ix = usize::MAX;
+            return;
+        }
+
+        let ix = rng().gen_range(0, triangle_count);
         if ix == self.oldest_triangle_ix {
             return self.set_new_last_triangle();
         }
-        self.last_triangle = triangles()[ix].geometry;
+        self.last_triangle = triangles(self.chain_ix)[ix].geometry;
         self.last_triangle_ix = ix;
+    }
+
+    #[inline(always)]
+    pub fn triangles(&self) -> &'static Vec<TriangleHandle> {
+        triangles(self.chain_ix)
+    }
+
+    #[inline(always)]
+    pub fn triangles_mut(&self) -> &'static mut Vec<TriangleHandle> {
+        triangles_mut(self.chain_ix)
+    }
+
+    #[inline(always)]
+    pub fn get_triangle(&self, i: usize) -> &'static TriangleHandle {
+        get_triangle(self.chain_ix, i)
+    }
+
+    #[inline(always)]
+    pub fn get_triangle_mut(&self, i: usize) -> &'static mut TriangleHandle {
+        get_triangle_mut(self.chain_ix, i)
     }
 }
 
@@ -171,11 +236,20 @@ fn render_triangle_array(triangle: &TriangleBuf, color: &str, border_color: &str
     render_triangle(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y, color, border_color)
 }
 
-type World = DBVT<f32, usize, AABB<f32>>;
+/// Clear out the collision world and empty the geometry buffer
+fn reinitialize_global_state() {
+    let world = unsafe { &mut *COLLISION_WORLD };
+    let triangles = unsafe { &mut *TRIANGLES };
+    *world = DBVT::new();
+    triangles.iter_mut().for_each(|v| v.clear())
+}
+
+/// DBVT with custom data as `(chain_ix, triangle_ix)`
+type World = DBVT<f32, (usize, usize), AABB<f32>>;
 static mut COLLISION_WORLD: *mut World = ptr::null_mut();
-static mut TRIANGLES: *mut Vec<TriangleHandle> = ptr::null_mut();
+static mut TRIANGLES: *mut [Vec<TriangleHandle>; CHAIN_COUNT] = ptr::null_mut();
 static mut RNG: *mut Pcg32 = ptr::null_mut();
-static mut ENV: *mut Env = ptr::null_mut();
+static mut ENVS: *mut [Option<Env>; CHAIN_COUNT] = ptr::null_mut();
 
 #[inline(always)]
 fn rng() -> &'static mut Pcg32 {
@@ -183,8 +257,43 @@ fn rng() -> &'static mut Pcg32 {
 }
 
 #[inline(always)]
-fn triangles() -> &'static mut Vec<TriangleHandle> {
-    unsafe { &mut *TRIANGLES }
+fn triangles(chain_ix: usize) -> &'static Vec<TriangleHandle> {
+    if cfg!(debug_assertions) {
+        unsafe { &(&*TRIANGLES)[chain_ix] }
+    } else {
+        unsafe { (&*TRIANGLES).get_unchecked(chain_ix) }
+    }
+}
+
+#[inline(always)]
+fn triangles_mut(chain_ix: usize) -> &'static mut Vec<TriangleHandle> {
+    if cfg!(debug_assertions) {
+        unsafe { &mut (&mut *TRIANGLES)[chain_ix] }
+    } else {
+        unsafe { (&mut *TRIANGLES).get_unchecked_mut(chain_ix) }
+    }
+}
+
+#[inline(always)]
+fn get_triangle(chain_ix: usize, i: usize) -> &'static TriangleHandle {
+    if cfg!(debug_assertions) {
+        unsafe { &(&mut *TRIANGLES)[chain_ix][i] }
+    } else {
+        unsafe { (&*TRIANGLES).get_unchecked(chain_ix).get_unchecked(i) }
+    }
+}
+
+#[inline(always)]
+fn get_triangle_mut(chain_ix: usize, i: usize) -> &'static mut TriangleHandle {
+    if cfg!(debug_assertions) {
+        unsafe { &mut (&mut *TRIANGLES)[chain_ix][i] }
+    } else {
+        unsafe {
+            (&mut *TRIANGLES)
+                .get_unchecked_mut(chain_ix)
+                .get_unchecked_mut(i)
+        }
+    }
 }
 
 #[inline(always)]
@@ -200,14 +309,27 @@ pub fn init() {
     let p: *mut World = Box::into_raw(world);
     unsafe { COLLISION_WORLD = p };
 
-    let triangles: Box<Vec<TriangleHandle>> = box Vec::with_capacity(200);
-    let p: *mut Vec<TriangleHandle> = Box::into_raw(triangles);
+    let triangles: Box<[Vec<TriangleHandle>; CHAIN_COUNT]> = unsafe { box mem::uninitialized() };
+    let p: *mut [Vec<TriangleHandle>; CHAIN_COUNT] = Box::into_raw(triangles);
+    for i in 0..CHAIN_COUNT {
+        unsafe {
+            ptr::write(
+                (p as *mut Vec<TriangleHandle>).add(i),
+                Vec::with_capacity(200),
+            )
+        };
+    }
+
     unsafe { TRIANGLES = p };
 
     let rng_seed: [u8; 16] = unsafe { mem::transmute(1u128) };
     let rng: Box<Pcg32> = box Pcg32::from_seed(rng_seed);
     let p: *mut Pcg32 = Box::into_raw(rng);
     unsafe { RNG = p };
+    unsafe { ENVS = Box::into_raw(box mem::uninitialized()) };
+    for i in 0..CHAIN_COUNT {
+        unsafe { ptr::write((ENVS as *mut Option<Env>).add(i), None) };
+    }
 }
 
 #[inline]
@@ -267,12 +389,12 @@ fn check_triangle_collision(t1: &TriangleBuf, t2: &TriangleBuf) -> bool {
 struct TriangleCollisionVisitor<'a> {
     pub triangle: &'a TriangleBuf,
     pub triangle_bv: &'a AABB<f32>,
-    pub triangles: &'a [TriangleHandle],
+    pub triangles: &'a [Vec<TriangleHandle>; CHAIN_COUNT],
     pub does_collide: &'a mut bool,
     pub debug: bool,
 }
 
-impl<'a> BVTVisitor<usize, AABB<f32>> for TriangleCollisionVisitor<'a> {
+impl<'a> BVTVisitor<(usize, usize), AABB<f32>> for TriangleCollisionVisitor<'a> {
     fn visit_internal(&mut self, bv: &AABB<f32>) -> bool {
         if *self.does_collide {
             return false;
@@ -281,12 +403,15 @@ impl<'a> BVTVisitor<usize, AABB<f32>> for TriangleCollisionVisitor<'a> {
         self.triangle_bv.intersects(bv)
     }
 
-    fn visit_leaf(&mut self, i: &usize, _bv: &AABB<f32>) {
+    fn visit_leaf(&mut self, (chain_ix, triangle_ix): &(usize, usize), _bv: &AABB<f32>) {
         if *self.does_collide {
             return;
         }
 
-        if check_triangle_collision(&self.triangle, &self.triangles[*i].geometry) {
+        if check_triangle_collision(
+            &self.triangle,
+            &get_triangle(*chain_ix, *triangle_ix).geometry,
+        ) {
             *self.does_collide = true;
         }
     }
@@ -306,13 +431,13 @@ fn draw_bounding_box(bv: &AABB<f32>, color: &str, border_color: &str) {
 
 struct BoundingBoxDebugVisitor;
 
-impl BVTVisitor<usize, AABB<f32>> for BoundingBoxDebugVisitor {
+impl BVTVisitor<(usize, usize), AABB<f32>> for BoundingBoxDebugVisitor {
     fn visit_internal(&mut self, bv: &AABB<f32>) -> bool {
         draw_bounding_box(bv, "rgba(13, 24, 230, 0.035)", "#2212BB");
         true
     }
 
-    fn visit_leaf(&mut self, _i: &usize, bv: &AABB<f32>) {
+    fn visit_leaf(&mut self, _i: &(usize, usize), bv: &AABB<f32>) {
         draw_bounding_box(bv, "rgba(230, 24, 80, 0.2)", "#BC1231");
     }
 }
@@ -355,18 +480,13 @@ fn find_triangle_placement(
     if proposed_triangle.iter().any(|pt| !pt_within_canvas(pt)) {
         return None;
     }
-    let (min, max) = bounds(
-        proposed_triangle[0],
-        proposed_triangle[1],
-        proposed_triangle[2],
-    );
-    let bounding_box = AABB::new(min, max);
+    let bounding_box = get_triangle_bv(&proposed_triangle);
 
     let mut does_collide = false;
     let mut visitor = TriangleCollisionVisitor {
         triangle: &proposed_triangle,
         triangle_bv: &bounding_box,
-        triangles: triangles(),
+        triangles: unsafe { &*TRIANGLES },
         does_collide: &mut does_collide,
         debug: *debug_bounding_boxes && (i + 1 == *triangle_count),
     };
@@ -400,7 +520,7 @@ fn generate_triangle(env: &mut Env, i: usize) -> Option<(AABB<f32>, TriangleBuf)
     None // failed to place a triangle at this origin in `PLACEMENT_ATTTEMPTS` attempts
 }
 
-fn place_triangle(env: &mut Env, i: usize, insert_at_oldest_ix: bool) -> Result<(), ()> {
+fn place_triangle(env: &mut Env, i: usize, insert_at_oldest_ix: bool) -> Option<()> {
     for _ in 0..PLACEMENT_BAILOUT_THRESHOLD {
         if let Some((bv, triangle)) = generate_triangle(env, i) {
             let dom_id = render_triangle_array(
@@ -411,9 +531,9 @@ fn place_triangle(env: &mut Env, i: usize, insert_at_oldest_ix: bool) -> Result<
             let insertion_ix = if insert_at_oldest_ix {
                 env.oldest_triangle_ix
             } else {
-                triangles().len()
+                env.triangles().len()
             };
-            let leaf_id = world().insert(DBVTLeaf::new(bv, insertion_ix));
+            let leaf_id = world().insert(DBVTLeaf::new(bv, (env.chain_ix, insertion_ix)));
 
             let handle = TriangleHandle {
                 dom_id,
@@ -428,13 +548,13 @@ fn place_triangle(env: &mut Env, i: usize, insert_at_oldest_ix: bool) -> Result<
                 next_node_2: None,
             };
             if insert_at_oldest_ix {
-                triangles()[env.oldest_triangle_ix] = handle;
+                *env.get_triangle_mut(env.oldest_triangle_ix) = handle;
             } else {
-                triangles().push(handle);
+                env.triangles_mut().push(handle);
             }
 
             if env.last_triangle_ix != usize::MAX {
-                let last_triangle = &mut triangles()[env.last_triangle_ix];
+                let last_triangle = env.get_triangle_mut(env.last_triangle_ix);
                 match (last_triangle.next_node_1, last_triangle.next_node_2) {
                     (Some(_), None) => {
                         last_triangle.next_node_2 = Some(insertion_ix);
@@ -453,23 +573,22 @@ fn place_triangle(env: &mut Env, i: usize, insert_at_oldest_ix: bool) -> Result<
             }
             env.last_triangle = triangle;
             env.last_triangle_ix = insertion_ix;
-            return Ok(());
+            return Some(());
         }
 
         // we failed to place a triangle at this origin; we have to pick a new origin point.
         env.set_new_last_triangle();
     }
 
-    common::error(format!(
-        "Failed to place a triangle in {} iterations; bailing out.",
-        PLACEMENT_BAILOUT_THRESHOLD,
-    ));
-    Err(())
+    None
 }
 
 #[wasm_bindgen]
-pub fn render(conf_str: &str) {
-    let mut env = match Env::parse_from_str(conf_str) {
+pub fn render(conf_str: &str, chain_ix: usize) {
+    if chain_ix == 0 {
+        reinitialize_global_state();
+    }
+    let mut env = match Env::parse_from_str(conf_str, chain_ix) {
         Ok(env) => env,
         Err(err) => {
             common::error(err);
@@ -478,55 +597,42 @@ pub fn render(conf_str: &str) {
     };
 
     // place `triangle_count` triangles
-    'triangle_generator: for i in 0..env.conf.triangle_count {
-        // give up placing any more triangles after `PLACEMENT_BAILOUT_THRESHOLD` placement attempts
-        match place_triangle(&mut env, i, false) {
-            Ok(()) => {
-                continue 'triangle_generator;
-            }
-            Err(()) => break,
-        }
+    for i in 0..env.conf.triangle_count {
+        place_triangle(&mut env, i, false);
     }
 
     if env.conf.debug_bounding_boxes {
         world().visit(&mut BoundingBoxDebugVisitor);
     }
 
-    if unsafe { !ENV.is_null() } {
-        // Drop the old conf to avoid leaking memory from the allocated strings
-        let old_env = unsafe { Box::from_raw(ENV) };
-        drop(old_env);
-    }
-    let new_env = box env;
-    unsafe { ENV = Box::into_raw(new_env) };
+    unsafe { (&mut *ENVS)[chain_ix] = Some(env) };
 }
 
 /// Delete the oldest generated triangle and generate a new triangle.
 #[wasm_bindgen]
-pub fn generate() {
+pub fn generate(chain_ix: usize) {
+    let env: &mut Env = unsafe { (&mut *ENVS)[chain_ix].as_mut().unwrap() };
     let assert_handle_valid = |handle: &TriangleHandle| {
         debug_assert!(handle.degree() != 0);
         debug_assert!(!(handle.next_node_1 == handle.next_node_2 && handle.next_node_1.is_some()));
         debug_assert!(!(handle.next_node_1 == handle.prev_node && handle.next_node_1.is_some()));
         debug_assert!(!(handle.next_node_2 == handle.prev_node && handle.next_node_2.is_some()));
     };
-    triangles().iter().for_each(assert_handle_valid);
-
-    let env: &mut Env = unsafe { &mut *ENV };
+    env.triangles().iter().for_each(assert_handle_valid);
     if env.oldest_triangle_ix == env.last_triangle_ix {
         env.set_new_last_triangle();
     }
 
-    fn child_degree_is_not_one(link: &Option<usize>) -> bool {
+    let child_degree_is_not_one = |link: &Option<usize>| -> bool {
         if let Some(child_ix) = link {
-            triangles()[*child_ix].degree() != 1
+            env.get_triangle(*child_ix).degree() != 1
         } else {
             true
         }
-    }
+    };
 
     let triangle_valid = if env.oldest_triangle_ix != usize::MAX {
-        let oldest_triangle = &triangles()[env.oldest_triangle_ix];
+        let oldest_triangle = env.get_triangle(env.oldest_triangle_ix);
         let triangle_valid = oldest_triangle.degree() == 1
             && [
                 oldest_triangle.prev_node,
@@ -539,27 +645,24 @@ pub fn generate() {
             delete_elem(oldest_triangle.dom_id);
             world().remove(oldest_triangle.collider_handle);
             if let Some(prev_ix) = oldest_triangle.prev_node {
-                if triangles()[prev_ix].next_node_1 == Some(env.oldest_triangle_ix) {
-                    triangles()[prev_ix].next_node_1 = None;
-                } else if triangles()[prev_ix].next_node_2 == Some(env.oldest_triangle_ix) {
-                    triangles()[prev_ix].next_node_2 = None;
+                if env.get_triangle(prev_ix).next_node_1 == Some(env.oldest_triangle_ix) {
+                    env.get_triangle_mut(prev_ix).next_node_1 = None;
+                } else if env.get_triangle(prev_ix).next_node_2 == Some(env.oldest_triangle_ix) {
+                    env.get_triangle_mut(prev_ix).next_node_2 = None;
                 } else {
                     panic!("Tried to delete triangle but its parent doesn't list it as its child");
                 }
             }
             if let Some(child_ix) = oldest_triangle.next_node_1 {
-                debug_assert!(triangles()[child_ix].prev_node == Some(env.oldest_triangle_ix));
-                triangles()[child_ix].prev_node = None;
+                debug_assert!(env.get_triangle(child_ix).prev_node == Some(env.oldest_triangle_ix));
+                env.get_triangle_mut(child_ix).prev_node = None;
             }
             if let Some(child_ix) = oldest_triangle.next_node_2 {
-                debug_assert!(triangles()[child_ix].prev_node == Some(env.oldest_triangle_ix));
-                triangles()[child_ix].prev_node = None;
+                debug_assert!(env.get_triangle(child_ix).prev_node == Some(env.oldest_triangle_ix));
+                env.get_triangle_mut(child_ix).prev_node = None;
             }
 
-            match place_triangle(env, env.conf.triangle_count, true) {
-                Ok(()) => (),
-                Err(()) => panic!("Unable to place new triangle"),
-            };
+            place_triangle(env, env.conf.triangle_count, true);
         }
         triangle_valid
     } else {
@@ -573,7 +676,7 @@ pub fn generate() {
     }
 
     if !triangle_valid {
-        generate();
+        generate(chain_ix);
     }
 }
 

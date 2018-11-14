@@ -59,33 +59,58 @@ wasm.then(engine => {
   let genDelayMs: number = 1000.0 / 20.0;
   let genIntervalHandle: number | undefined = undefined;
 
+  const genAllChains = () => {
+    for (let i = 0; i < 3; i++) {
+      engine.generate(i);
+    }
+  };
+
   const settings = [
     { type: 'range', label: 'prng_seed', min: 0, max: 1, steps: 1000, initial: 0.5 },
-    { type: 'range', label: 'canvas_width', min: 100, max: 1000, initial: 800 },
-    { type: 'range', label: 'canvas_height', min: 100, max: 1000, initial: 800 },
+    { type: 'range', label: 'canvas_width', min: 100, max: 2000, initial: 1400 },
+    { type: 'range', label: 'canvas_height', min: 100, max: 1600, initial: 800 },
     { type: 'range', label: 'triangle_size', min: 1.0, max: 50.0, step: 0.5, initial: 10.0 },
     // TODO: handle these client side
-    { type: 'color', label: 'triangle_border_color', initial: '#7c007c', format: 'rgb' }, // rgb(50, 115, 3)
-    { type: 'color', label: 'triangle_color', initial: 'rgb(81, 12, 84)', format: 'rgb' }, // rgb(12, 84, 22)
+    {
+      type: 'color',
+      label: 'chain_1_triangle_border_color',
+      initial: '#E20CA3',
+      format: 'rgb',
+    },
+    { type: 'color', label: 'chain_1_triangle_color', initial: 'rgb(81, 12, 84)', format: 'rgb' },
+    {
+      type: 'color',
+      label: 'chain_2_triangle_border_color',
+      initial: 'rgb(15, 190, 230)',
+      format: 'rgb',
+    },
+    { type: 'color', label: 'chain_2_triangle_color', initial: 'rgb(9, 89, 135)', format: 'rgb' },
+    {
+      type: 'color',
+      label: 'chain_3_triangle_border_color',
+      initial: 'rgb(36, 189, 6)',
+      format: 'rgb',
+    },
+    { type: 'color', label: 'chain_3_triangle_color', initial: 'rgb(9, 112, 5)', format: 'rgb' },
     { type: 'color', label: 'background_color', initial: '#080808', format: 'hex' },
     { type: 'range', label: 'rotation_offset', min: -180, max: 180, initial: 60, steps: 250 },
     {
       type: 'range',
       label: 'triangle_count',
-      initial: 200,
+      initial: 50,
       min: 3,
-      max: 20000,
+      max: 10000,
       steps: 250,
       scale: 'log',
     },
     { type: 'range', label: 'max_rotation_rads', initial: 0.5, min: 0.0, max: Math.PI },
     { type: 'checkbox', label: 'debug_bounding_boxes', initial: false },
-    { type: 'range', label: 'generation_rate', min: 0, max: 60, steps: 60, initial: 20 },
+    { type: 'range', label: 'generation_rate', min: 0, max: 180, steps: 60, initial: 20 },
     {
       type: 'button',
       label: 'start_generating',
       action: () => {
-        genIntervalHandle = setInterval(engine.generate, genDelayMs);
+        genIntervalHandle = setInterval(genAllChains, genDelayMs);
       },
     },
     {
@@ -111,13 +136,22 @@ wasm.then(engine => {
         if (genDelayMs != newGenDelayMs) {
           genDelayMs = newGenDelayMs;
           clearInterval(genIntervalHandle);
-          setInterval(engine.generate, genDelayMs);
+          setInterval(genAllChains, genDelayMs);
+          return;
         }
         deleteAllChildren(SVG);
 
-        engine.render(
-          JSON.stringify({ ...state, triangle_count: Math.round(state.triangle_count) })
-        );
+        for (let i = 0; i < 3; i++) {
+          engine.render(
+            JSON.stringify({
+              ...state,
+              triangle_count: Math.round(state.triangle_count),
+              triangle_color: state[`chain_${i + 1}_triangle_color`],
+              triangle_border_color: state[`chain_${i + 1}_triangle_border_color`],
+            }),
+            i
+          );
+        }
       }}
       width={500}
     />

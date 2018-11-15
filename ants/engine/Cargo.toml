@@ -11,5 +11,11 @@ crate-type = ["cdylib"]
 wasm-bindgen = "0.2.28"
 minutiae = { path="../../../minutiae/minutiae" }
 uuid = { version = "0.7.1", features = ["v4"] }
+rand = "0.5.5"
+rand_pcg = "0.1.1"
+rand_core = "0.3.0"
 
 common = { path="../../common" }
+
+[profile.dev]
+opt-level = 3

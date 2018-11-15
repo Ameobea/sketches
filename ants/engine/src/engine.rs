@@ -1,10 +1,114 @@
 use minutiae::engine::iterator::SerialEntityIterator;
 use minutiae::engine::serial::SerialEngine;
 use minutiae::universe::Universe2D;
+use rand::Rng;
 
 use super::*;
 
 pub struct AntEngine;
+
+fn exec_cell_action(
+    action: &AntOwnedAction,
+    universe: &mut Universe2D<AntCellState, AntEntityState, AntMutEntityState>,
+) {
+    match &action.action {
+        Action::CellAction {
+            universe_index,
+            action: self_action,
+        } => match self_action {
+            AntCellAction::LayPheremone(pheremone_type) => {
+                let pheremones = if let AntCellState::Empty(pheremones) =
+                    &mut universe.cells[*universe_index].state
+                {
+                    pheremones
+                } else {
+                    return;
+                };
+
+                match pheremone_type {
+                    PheremoneType::Wandering => pheremones.wandering += 1.,
+                    PheremoneType::Returning => pheremones.returning += 1.,
+                }
+            }
+        },
+        _ => unreachable!(),
+    }
+}
+
+fn exec_self_action(
+    action: &AntOwnedAction,
+    universe: &mut Universe2D<AntCellState, AntEntityState, AntMutEntityState>,
+) {
+    match action.action {
+        Action::SelfAction(ref self_action) => {
+            let (entity_index, entity_uuid) = (action.source_entity_index, action.source_uuid);
+            // this function will return early if the entity has been deleted
+            let (entity, universe_index) =
+                match universe.entities.get_verify_mut(entity_index, entity_uuid) {
+                    Some((entity, universe_index)) => (entity, universe_index),
+                    None => {
+                        return;
+                    } // entity has been deleted, so do nothing.
+                };
+
+            match self_action {
+                SelfAction::Translate(x_offset, y_offset) => {
+                    // if this is the entity that we're looking for, check to see if the requested move is in bounds
+                    let (cur_x, cur_y) = get_coords(universe_index, UNIVERSE_SIZE as usize);
+                    let new_x = cur_x as isize + x_offset;
+                    let new_y = cur_y as isize + y_offset;
+
+                    // verify that the supplied desination coordinates are in bounds
+                    // TODO: verify that the supplied destination coordinates are within ruled bounds of destination
+                    if new_x >= 0
+                        && new_x < UNIVERSE_SIZE as isize
+                        && new_y >= 0
+                        && new_y < UNIVERSE_SIZE as isize
+                    {
+                        let dst_universe_index =
+                            get_index(new_x as usize, new_y as usize, UNIVERSE_SIZE as usize);
+
+                        // Only allow moves onto empty squares
+                        match universe.cells[dst_universe_index].state {
+                            AntCellState::Empty(_) => (),
+                            _ => return,
+                        };
+                        universe
+                            .entities
+                            .move_entity(entity_index, dst_universe_index);
+                    }
+                }
+                SelfAction::Custom(AntEntityAction::UpdateWanderState) => {
+                    if let Entity {
+                        state: AntEntityState::Wandering(ref mut wander_state),
+                        ..
+                    } = entity
+                    {
+                        *wander_state = wander_state.next()
+                    }
+                }
+                _ => unimplemented!(),
+            }
+        }
+        _ => unreachable!(),
+    }
+}
+
+fn exec_entity_action(
+    action: &AntOwnedAction,
+    universe: &mut Universe2D<AntCellState, AntEntityState, AntMutEntityState>,
+) {
+    match action.action {
+        Action::EntityAction {
+            action: ref entity_action,
+            target_entity_index,
+            target_uuid,
+        } => match entity_action {
+            _ => unimplemented!(),
+        },
+        _ => unreachable!(),
+    }
+}
 
 impl
     SerialEngine<
@@ -33,12 +137,22 @@ impl
         self_actions: &[AntOwnedAction],
         entity_actions: &[AntOwnedAction],
     ) {
-        unimplemented!();
+        for cell_action in cell_actions {
+            exec_cell_action(cell_action, universe);
+        }
+
+        for self_action in self_actions {
+            exec_self_action(self_action, universe);
+        }
+
+        for entity_action in entity_actions {
+            exec_entity_action(entity_action, universe);
+        }
     }
 
     fn drive_entity(
         &mut self,
-        entity_index: usize,
+        source_universe_index: usize,
         entity: &Entity<AntCellState, AntEntityState, AntMutEntityState>,
         universe: &Universe2D<AntCellState, AntEntityState, AntMutEntityState>,
         cell_action_executor: &mut dyn std::ops::FnMut(AntCellAction, usize),
@@ -51,6 +165,25 @@ impl
         ),
         entity_action_executor: &mut dyn std::ops::FnMut(AntEntityAction, usize, uuid::Uuid),
     ) {
-        unimplemented!();
+        match &entity.state {
+            AntEntityState::Wandering(WanderingState { x_dir, y_dir }) => {
+                self_action_executor(SelfAction::Translate(
+                    x_dir.get_coord_offset(),
+                    y_dir.get_coord_offset(),
+                ));
+                self_action_executor(SelfAction::Custom(AntEntityAction::UpdateWanderState));
+                cell_action_executor(
+                    AntCellAction::LayPheremone(PheremoneType::Wandering),
+                    source_universe_index,
+                );
+            }
+            AntEntityState::ReturningToNestWithFood => {
+                cell_action_executor(
+                    AntCellAction::LayPheremone(PheremoneType::Returning),
+                    source_universe_index,
+                );
+            }
+            _ => unimplemented!(),
+        }
     }
 }

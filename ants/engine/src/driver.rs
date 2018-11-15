@@ -88,6 +88,8 @@ impl
             }
         };
 
-        register_tick_callback(&Closure::wrap(box cb));
+        let closure = Closure::wrap((box cb) as Box<FnMut()>);
+        register_tick_callback(&closure);
+        closure.forget();
     }
 }

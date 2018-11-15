@@ -1,17 +1,17 @@
 const wasm = import('./engine');
 
+const canvas = document.getElementById('canvas')! as HTMLCanvasElement;
+const ctx = canvas.getContext('2d')!;
+
 export const canvas_render = (colors: Uint8Array) => {
-  // TODO
-  console.log(colors);
+  const imageData = new ImageData(new Uint8ClampedArray(colors), canvas.width, canvas.height);
+  ctx.putImageData(imageData, 0, 0);
 };
 
 let tick: null | (() => void) = null;
 export const register_tick_callback = (minutiaeTick: () => void) => {
   tick = minutiaeTick;
-  console.log(tick);
+  setInterval(tick, 10);
 };
 
-wasm.then(engine => {
-  engine.init();
-  engine.hello();
-});
+wasm.then(engine => engine.init());

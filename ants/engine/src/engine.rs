@@ -53,13 +53,11 @@ fn exec_self_action(
 
             match self_action {
                 SelfAction::Translate(x_offset, y_offset) => {
-                    // if this is the entity that we're looking for, check to see if the requested move is in bounds
                     let (cur_x, cur_y) = get_coords(universe_index, UNIVERSE_SIZE as usize);
                     let new_x = cur_x as isize + x_offset;
                     let new_y = cur_y as isize + y_offset;
 
                     // verify that the supplied desination coordinates are in bounds
-                    // TODO: verify that the supplied destination coordinates are within ruled bounds of destination
                     if new_x >= 0
                         && new_x < UNIVERSE_SIZE as isize
                         && new_y >= 0
@@ -76,14 +74,13 @@ fn exec_self_action(
                         universe
                             .entities
                             .move_entity(entity_index, dst_universe_index);
+                    } else if let AntEntityState::Wandering(ref mut wander_state) = entity.state {
+                        // reset the wander state since we've hit a side
+                        *wander_state = WanderingState::default();
                     }
                 }
                 SelfAction::Custom(AntEntityAction::UpdateWanderState) => {
-                    if let Entity {
-                        state: AntEntityState::Wandering(ref mut wander_state),
-                        ..
-                    } = entity
-                    {
+                    if let AntEntityState::Wandering(ref mut wander_state) = entity.state {
                         *wander_state = wander_state.next()
                     }
                 }

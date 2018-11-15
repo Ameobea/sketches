@@ -51,7 +51,12 @@ pub enum AntCellState {
 
 impl CellState for AntCellState {}
 
-const WANDER_TRANSITION_CHANCE_PERCENT: usize = 8;
+static mut WANDER_TRANSITION_CHANCE_PERCENT: usize = 8;
+
+#[wasm_bindgen]
+pub fn set_wander_transition_chance_percent(val: usize) {
+    unsafe { WANDER_TRANSITION_CHANCE_PERCENT = val };
+}
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum WanderDirection {
@@ -62,7 +67,7 @@ pub enum WanderDirection {
 
 impl WanderDirection {
     pub fn next(self) -> Self {
-        let should_change = rng().gen_range(0, 101) <= WANDER_TRANSITION_CHANCE_PERCENT;
+        let should_change = rng().gen_range(0, 101) <= unsafe { WANDER_TRANSITION_CHANCE_PERCENT };
         if !should_change {
             return self;
         }
@@ -235,9 +240,4 @@ pub fn init() {
             canvas_render,
         )],
     )
-}
-
-#[wasm_bindgen]
-pub fn hello() {
-    common::log("Hello, world!")
 }

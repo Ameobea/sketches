@@ -22,7 +22,8 @@
     "baseUrl": ".",
     "paths": {
       "*": ["./node_modules/@types/*", "*"]
-    }
+    },
+    "jsx": "react"
   },
   "exclude": [
     "node_modules",

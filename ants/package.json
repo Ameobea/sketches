@@ -1,8 +1,8 @@
 {
-  "name": "sketch",
+  "name": "ants",
   "version": "0.1.0",
-  "description": "A WebAssembly sketch",
-  "main": "src/index.ts",
+  "description": "Ant colony simulation",
+  "main": "src/index.tsx",
   "repository": "https://github.com/Ameobea/sketches",
   "author": "Casey Primozic <me@ameo.link>",
   "devDependencies": {
@@ -15,9 +15,13 @@
     "webpack-cli": "^3.1.0",
     "webpack-dev-server": "^3.1.4"
   },
+  "dependencies": {
+    "react": "^16.5.2",
+    "react-control-panel": "^0.3.0",
+    "react-dom": "^16.5.2"
+  },
   "scripts": {
     "start": "webpack-dev-server",
     "build": "rm -rf dist/* && webpack --config webpack.prod.js"
-  },
-  "dependencies": {}
+  }
 }

@@ -1,15 +1,20 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
-import ControlPanel from 'react-control-panel';
+
+import { createBackgroundTexture, initWebGL, render } from './webgl';
+import { getCanvas } from './canvas';
+import UI from './ui';
 
 const wasm = import('./engine');
 
-const canvas = document.getElementById('canvas')! as HTMLCanvasElement;
-const ctx = canvas.getContext('2d')!;
+let canvasScaleFactor = 3;
+export const setCanvasScaleFactor = (newScaleFactor: number) =>
+  (canvasScaleFactor = newScaleFactor);
 
 export const canvas_render = (colors: Uint8Array) => {
-  const imageData = new ImageData(new Uint8ClampedArray(colors), canvas.width, canvas.height);
-  ctx.putImageData(imageData, 0, 0);
+  const textureWidth = Math.sqrt(colors.length);
+  createBackgroundTexture(colors);
+  render(canvasScaleFactor, 0, 0);
 };
 
 let tick: null | (() => void) = null;
@@ -19,64 +24,53 @@ export const register_tick_callback = (minutiaeTick: () => void) => {
   intervalHandle = setInterval(tick, 10);
 };
 
-const pause = () => {
+export const pause = () => {
   if (intervalHandle) {
     clearInterval(intervalHandle);
     intervalHandle = null;
   }
 };
 
-const resume = () => {
+let tickDelay = 10.0;
+export const resume = (delay?: number) => {
   if (!intervalHandle) {
-    intervalHandle = setInterval(tick!, 10);
+    if (delay !== undefined) {
+      tickDelay = delay;
+    }
+
+    intervalHandle = setInterval(tick!, tickDelay);
   }
 };
 
-wasm.then(engine => {
-  engine.init();
+wasm
+  .then(engine => {
+    initWebGL();
+    engine.init();
 
-  const settings = [
-    { type: 'range', label: 'direction_change_chance', min: 1, max: 100, step: 0.25, initial: 4.5 },
-    {
-      type: 'button',
-      label: 'reset',
-      action: () => {
-        pause();
-        engine.init_universe();
+    const buttons = [
+      {
+        type: 'button',
+        label: 'reset',
+        action: () => {
+          pause();
+          // Delete the old universe, freeing associated resources, and trigger a new tick callback
+          // to be set.
+          engine.init_universe();
+        },
       },
-    },
-    {
-      type: 'button',
-      label: 'pause',
-      action: pause,
-    },
-    {
-      type: 'button',
-      label: 'resume',
-      action: resume,
-    },
-  ];
+      {
+        type: 'button',
+        label: 'pause',
+        action: pause,
+      },
+      {
+        type: 'button',
+        label: 'resume',
+        action: () => resume,
+      },
+    ];
 
-  const App = () => (
-    <ControlPanel
-      position="top-right"
-      title="Simulation Controls"
-      settings={settings}
-      onChange={(key, val, _state) => {
-        switch (key) {
-          case 'direction_change_chance': {
-            engine.set_wander_transition_chance_percent(parseInt(val));
-            break;
-          }
-          default: {
-            console.error(`Unhandled setting key: ${key}`);
-          }
-        }
-      }}
-      width={600}
-    />
-  );
-
-  const root = document.getElementById('root');
-  ReactDOM.render(<App />, root);
-});
+    const root = document.getElementById('root');
+    ReactDOM.render(<UI buttons={buttons} setConf={engine.set_user_conf} />, root);
+  })
+  .catch(console.error);

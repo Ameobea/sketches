@@ -4,8 +4,12 @@ extern crate common;
 extern crate minutiae;
 extern crate rand_core;
 extern crate rand_pcg;
+extern crate serde;
+extern crate serde_json;
 extern crate uuid;
 extern crate wasm_bindgen;
+#[macro_use]
+extern crate serde_derive;
 
 use std::{mem, ptr};
 
@@ -26,42 +30,15 @@ pub mod driver;
 use self::driver::JSDriver;
 pub mod universe_generator;
 use self::universe_generator::AntUniverseGenerator;
+pub mod conf;
+use self::conf::*;
 
-const UNIVERSE_SIZE: u32 = 800;
+const UNIVERSE_SIZE: u32 = 300;
 
 #[thread_local]
 static mut RNG: Pcg32 = unsafe { mem::transmute(0u128) };
 
 pub fn rng() -> &'static mut Pcg32 { unsafe { &mut RNG } }
-
-pub struct UserConf {
-    // universe gen
-    pub food_patch_count: usize,
-    pub food_patch_size: usize,
-    pub food_patch_size_variance: usize,
-    pub barrier_patch_count: usize,
-    pub barrier_patch_size: usize,
-    // ant behavior
-    pub wander_transition_chance_percent: f32,
-}
-
-const fn default_user_conf() -> UserConf {
-    UserConf {
-        food_patch_count: 5,
-        food_patch_size: 16,
-        food_patch_size_variance: 3,
-        barrier_patch_count: 6,
-        barrier_patch_size: 28,
-        wander_transition_chance_percent: 4.5,
-    }
-}
-
-#[thread_local]
-pub static mut ACTIVE_USER_CONF: UserConf = default_user_conf();
-
-pub fn active_conf() -> &'static UserConf { unsafe { &ACTIVE_USER_CONF } }
-
-pub fn active_conf_mut() -> &'static mut UserConf { unsafe { &mut ACTIVE_USER_CONF } }
 
 #[derive(Clone, Default)]
 pub struct Pheremones {
@@ -237,7 +214,7 @@ pub type OurEngineType = SerialEngine<
     OurUniverseType,
 >;
 
-struct PheremoneEvaporator;
+struct PheremoneEvaporator(usize);
 
 impl
     Middleware<
@@ -252,17 +229,35 @@ impl
 {
     fn before_render(&mut self, universe: &mut OurUniverseType) {
         for cell in &mut universe.cells {
+            self.0 += 1;
+            let UserConf {
+                pheremone_decay_interval,
+                pheremone_decay_amount,
+                ..
+            } = active_conf();
+            if self.0 % pheremone_decay_interval != 0 {
+                return;
+            }
+
             if let AntCellState::Empty(ref mut pheremones) = cell.state {
-                pheremones.returning *= 0.9;
-                pheremones.wandering *= 0.9;
+                pheremones.returning *= pheremone_decay_amount;
+                pheremones.wandering *= pheremone_decay_amount;
             }
         }
     }
 }
 
 #[wasm_bindgen]
-pub fn set_user_conf() -> UserConf {
-    unimplemented!(); // TODO
+pub fn set_user_conf(conf_json: String) {
+    let conf: UserConf = match serde_json::from_str(&conf_json) {
+        Ok(conf) => conf,
+        Err(err) => {
+            common::log(format!("Error parsing provided user conf JSON: {:?}", err));
+            return;
+        },
+    };
+
+    unsafe { ACTIVE_USER_CONF = conf };
 }
 
 #[wasm_bindgen]
@@ -274,7 +269,7 @@ pub fn init_universe() {
     let universe: OurUniverseType = Universe2D::new(conf, &mut AntUniverseGenerator(active_conf()));
     JSDriver.init(universe, engine, vec![
         box CanvasRenderer::new(UNIVERSE_SIZE as usize, calc_color, canvas_render),
-        box PheremoneEvaporator,
+        box PheremoneEvaporator(0),
     ])
 }
 

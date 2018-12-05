@@ -21,6 +21,10 @@ module.exports = {
         test: /\.hbs$/,
         use: 'handlebars-loader',
       },
+      {
+        test: /\.glsl$/,
+        use: 'raw-loader',
+      },
     ],
   },
   resolve: {

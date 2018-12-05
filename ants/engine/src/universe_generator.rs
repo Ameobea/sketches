@@ -8,11 +8,11 @@ pub struct AntUniverseGenerator(pub &'static UserConf);
 const INITIAL_ENTITY_COUNT: usize = 20;
 
 fn gen_barriers(cells: &mut [Cell<AntCellState>], count: usize, size: usize) {
-    unimplemented!(); // TODO
+    // unimplemented!(); // TODO
 }
 
 fn gen_food(cells: &mut [Cell<AntCellState>], count: usize, size: usize, variance: usize) {
-    unimplemented!(); // TODO
+    // unimplemented!(); // TODO
 }
 
 impl Generator<AntCellState, AntEntityState, AntMutEntityState> for AntUniverseGenerator {

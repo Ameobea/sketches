@@ -146,7 +146,11 @@ export const createBackgroundTexture = async (textureData: Uint8Array) => {
 
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  // Linear interpolation when shrinking the texture
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  // Pick the nearest pixel from the underlying texture when magnifying (which we're probably
+  // always going to be doing)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 };
 
 export const render = (scaleFactor: number, offsetX: number, offsetY: number) => {

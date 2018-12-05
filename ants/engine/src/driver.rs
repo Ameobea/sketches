@@ -44,7 +44,7 @@ impl
     ) {
         // check to see if we have an existing closure (which in turn holds references to all of the
         // universe state) and drop it if we do.
-        if unsafe { CLOSURE != ptr::null_mut() } {
+        if unsafe { !CLOSURE.is_null() } {
             let closure = unsafe { Box::from_raw(CLOSURE) };
             drop(closure);
         }

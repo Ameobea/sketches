@@ -228,20 +228,20 @@ impl
     > for PheremoneEvaporator
 {
     fn before_render(&mut self, universe: &mut OurUniverseType) {
-        for cell in &mut universe.cells {
-            self.0 += 1;
-            let UserConf {
-                pheremone_decay_interval,
-                pheremone_decay_amount,
-                ..
-            } = active_conf();
-            if self.0 % pheremone_decay_interval != 0 {
-                return;
-            }
+        self.0 += 1;
+        let UserConf {
+            pheremone_decay_interval,
+            pheremone_decay_multiplier,
+            ..
+        } = active_conf();
+        if self.0 % (*pheremone_decay_interval as usize) != 0 {
+            return;
+        }
 
+        for cell in &mut universe.cells {
             if let AntCellState::Empty(ref mut pheremones) = cell.state {
-                pheremones.returning *= pheremone_decay_amount;
-                pheremones.wandering *= pheremone_decay_amount;
+                pheremones.returning *= pheremone_decay_multiplier;
+                pheremones.wandering *= pheremone_decay_multiplier;
             }
         }
     }

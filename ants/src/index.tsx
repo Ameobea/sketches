@@ -71,6 +71,6 @@ wasm
     ];
 
     const root = document.getElementById('root');
-    ReactDOM.render(<UI buttons={buttons} setConf={engine.set_user_conf} />, root);
+    ReactDOM.render(<UI buttons={buttons} applyConf={engine.set_user_conf} />, root);
   })
   .catch(console.error);

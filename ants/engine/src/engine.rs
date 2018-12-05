@@ -1,7 +1,7 @@
-use minutiae::engine::iterator::SerialEntityIterator;
-use minutiae::engine::serial::SerialEngine;
-use minutiae::universe::Universe2D;
-use rand::Rng;
+use minutiae::{
+    engine::{iterator::SerialEntityIterator, serial::SerialEngine},
+    universe::Universe2D,
+};
 
 use super::*;
 
@@ -29,7 +29,7 @@ fn exec_cell_action(
                     PheremoneType::Wandering => pheremones.wandering += 1.,
                     PheremoneType::Returning => pheremones.returning += 1.,
                 }
-            }
+            },
         },
         _ => unreachable!(),
     }
@@ -48,7 +48,7 @@ fn exec_self_action(
                     Some((entity, universe_index)) => (entity, universe_index),
                     None => {
                         return;
-                    } // entity has been deleted, so do nothing.
+                    }, // entity has been deleted, so do nothing.
                 };
 
             match self_action {
@@ -78,28 +78,27 @@ fn exec_self_action(
                         // reset the wander state since we've hit a side
                         *wander_state = WanderingState::default();
                     }
-                }
-                SelfAction::Custom(AntEntityAction::UpdateWanderState) => {
+                },
+                SelfAction::Custom(AntEntityAction::UpdateWanderState) =>
                     if let AntEntityState::Wandering(ref mut wander_state) = entity.state {
                         *wander_state = wander_state.next()
-                    }
-                }
+                    },
                 _ => unimplemented!(),
             }
-        }
+        },
         _ => unreachable!(),
     }
 }
 
 fn exec_entity_action(
     action: &AntOwnedAction,
-    universe: &mut Universe2D<AntCellState, AntEntityState, AntMutEntityState>,
+    _universe: &mut Universe2D<AntCellState, AntEntityState, AntMutEntityState>,
 ) {
     match action.action {
         Action::EntityAction {
             action: ref entity_action,
-            target_entity_index,
-            target_uuid,
+            target_entity_index: _,
+            target_uuid: _,
         } => match entity_action {
             _ => unimplemented!(),
         },
@@ -115,8 +114,6 @@ impl
         AntCellAction,
         AntEntityAction,
         SerialEntityIterator<AntCellState, AntEntityState>,
-        usize,
-        Universe2D<AntCellState, AntEntityState, AntMutEntityState>,
         Universe2D<AntCellState, AntEntityState, AntMutEntityState>,
     > for AntEngine
 {
@@ -154,11 +151,7 @@ impl
         universe: &Universe2D<AntCellState, AntEntityState, AntMutEntityState>,
         cell_action_executor: &mut dyn std::ops::FnMut(AntCellAction, usize),
         self_action_executor: &mut dyn FnMut(
-            SelfAction<
-                AntCellState,
-                AntEntityState,
-                AntEntityAction,
-            >,
+            SelfAction<AntCellState, AntEntityState, AntEntityAction>,
         ),
         entity_action_executor: &mut dyn std::ops::FnMut(AntEntityAction, usize, uuid::Uuid),
     ) {
@@ -173,13 +166,13 @@ impl
                     AntCellAction::LayPheremone(PheremoneType::Wandering),
                     source_universe_index,
                 );
-            }
+            },
             AntEntityState::ReturningToNestWithFood => {
                 cell_action_executor(
                     AntCellAction::LayPheremone(PheremoneType::Returning),
                     source_universe_index,
                 );
-            }
+            },
             _ => unimplemented!(),
         }
     }

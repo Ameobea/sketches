@@ -13,20 +13,49 @@ export const canvas_render = (colors: Uint8Array) => {
 };
 
 let tick: null | (() => void) = null;
+let intervalHandle: number | null;
 export const register_tick_callback = (minutiaeTick: () => void) => {
   tick = minutiaeTick;
-  setInterval(tick, 10);
+  intervalHandle = setInterval(tick, 10);
 };
 
-const settings = [
-  { type: 'range', label: 'direction_change_chance', min: 1, max: 100, step: 1, initial: 8 },
-  { type: 'button', label: 'reset', action: () => console.log('TODO') },
-  { type: 'button', label: 'pause', action: () => console.log('TODO') },
-  { type: 'button', label: 'resume', action: () => console.log('TODO') },
-];
+const pause = () => {
+  if (intervalHandle) {
+    clearInterval(intervalHandle);
+    intervalHandle = null;
+  }
+};
+
+const resume = () => {
+  if (!intervalHandle) {
+    intervalHandle = setInterval(tick!, 10);
+  }
+};
 
 wasm.then(engine => {
   engine.init();
+
+  const settings = [
+    { type: 'range', label: 'direction_change_chance', min: 1, max: 100, step: 0.25, initial: 4.5 },
+    {
+      type: 'button',
+      label: 'reset',
+      action: () => {
+        pause();
+        engine.init_universe();
+      },
+    },
+    {
+      type: 'button',
+      label: 'pause',
+      action: pause,
+    },
+    {
+      type: 'button',
+      label: 'resume',
+      action: resume,
+    },
+  ];
 
   const App = () => (
     <ControlPanel

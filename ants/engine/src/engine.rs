@@ -57,20 +57,40 @@ fn exec_self_action(
                     let new_x = cur_x as isize + x_offset;
                     let new_y = cur_y as isize + y_offset;
 
-                    // verify that the supplied desination coordinates are in bounds
-                    if new_x >= 0
-                        && new_x < UNIVERSE_SIZE as isize
-                        && new_y >= 0
-                        && new_y < UNIVERSE_SIZE as isize
-                    {
+                    let can_move = {
+                        // verify that the supplied desination coordinates are in bounds
+                        let is_in_bounds = new_x >= 0
+                            && new_x < UNIVERSE_SIZE as isize
+                            && new_y >= 0
+                            && new_y < UNIVERSE_SIZE as isize;
+
+                        // verify we're not trying to move diagonally through non-traversable blocks
+                        is_in_bounds
+                            && if *x_offset != 0 && *y_offset != 0 {
+                                let (c1, c2) = (
+                                    &universe.cells
+                                        [get_index(cur_x, new_y as usize, UNIVERSE_SIZE as usize)],
+                                    &universe.cells
+                                        [get_index(new_x as usize, cur_y, UNIVERSE_SIZE as usize)],
+                                );
+                                c1.state.is_traversable() && c2.state.is_traversable()
+                            } else {
+                                true
+                            }
+                    };
+
+                    if can_move {
                         let dst_universe_index =
                             get_index(new_x as usize, new_y as usize, UNIVERSE_SIZE as usize);
 
                         // Only allow moves onto empty squares
-                        match universe.cells[dst_universe_index].state {
-                            AntCellState::Empty(_) => (),
-                            _ => return,
-                        };
+                        if !universe.cells[dst_universe_index].state.is_traversable() {
+                            if let AntEntityState::Wandering(ref mut wander_state) = entity.state {
+                                *wander_state = WanderingState::default();
+                                return;
+                            }
+                        }
+
                         universe
                             .entities
                             .move_entity(entity_index, dst_universe_index);
@@ -81,7 +101,8 @@ fn exec_self_action(
                 },
                 SelfAction::Custom(AntEntityAction::UpdateWanderState) =>
                     if let AntEntityState::Wandering(ref mut wander_state) = entity.state {
-                        *wander_state = wander_state.next()
+                        *wander_state =
+                            wander_state.next(active_conf().wander_transition_chance_percent)
                     },
                 _ => unimplemented!(),
             }

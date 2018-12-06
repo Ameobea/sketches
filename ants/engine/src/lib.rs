@@ -40,18 +40,27 @@ static mut RNG: Pcg32 = unsafe { mem::transmute(0u128) };
 
 pub fn rng() -> &'static mut Pcg32 { unsafe { &mut RNG } }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Copy, Debug)]
 pub struct Pheremones {
     wandering: f32,
     returning: f32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy, Debug)]
 pub enum AntCellState {
     Empty(Pheremones),
     Barrier,
     Food(usize),
     Anthill,
+}
+
+impl AntCellState {
+    pub fn is_traversable(&self) -> bool {
+        match self {
+            AntCellState::Barrier | AntCellState::Food(_) => false,
+            _ => true,
+        }
+    }
 }
 
 impl CellState for AntCellState {}
@@ -64,9 +73,8 @@ pub enum WanderDirection {
 }
 
 impl WanderDirection {
-    pub fn next(self) -> Self {
-        let should_change =
-            rng().gen_range(0.0, 100.0) <= active_conf().wander_transition_chance_percent;
+    pub fn next(self, transition_chance_percentage: f32) -> Self {
+        let should_change = rng().gen_range(0.0, 100.0) <= transition_chance_percentage;
         if !should_change {
             return self;
         }
@@ -111,10 +119,10 @@ pub struct WanderingState {
 impl WanderingState {
     /// Function as a markov chain.  Each tick, there's a chance for each of the two directions to
     /// transition to a different state.
-    fn next(self) -> Self {
+    fn next(self, transition_chance: f32) -> Self {
         let next_state = WanderingState {
-            x_dir: self.x_dir.next(),
-            y_dir: self.y_dir.next(),
+            x_dir: self.x_dir.next(transition_chance),
+            y_dir: self.y_dir.next(transition_chance),
         };
 
         if next_state

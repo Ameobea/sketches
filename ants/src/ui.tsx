@@ -50,11 +50,12 @@ const SimulationControls = ({ buttons, onChange, state }) => (
 );
 
 const worldGenSettings = [
-  { label: 'food_patch_count', type: 'range', min: 0, max: 100, steps: 100 },
+  { label: 'food_patch_count', type: 'range', min: 0, max: 500, steps: 200 },
   { label: 'food_patch_size', type: 'range', min: 0, max: 100, steps: 100 },
   { label: 'food_patch_size_variance', type: 'range', min: 0, max: 100, steps: 100 },
+  { label: 'food_patch_capacity', type: 'range', min: 1, max: 5000, scale: 'log' },
   { label: 'barrier_patch_count', type: 'range', min: 0, max: 100, steps: 100 },
-  { label: 'barrier_patch_size', type: 'range', min: 0, max: 100, steps: 100 },
+  { label: 'barrier_patch_size', type: 'range', min: 0, max: 500, steps: 100 },
 ];
 
 const WorldGenerationSettings = ({ onChange, state }) => (
@@ -99,11 +100,12 @@ const getInitialState = () => ({
   pheremone_decay_interval: 500,
   pheremone_decay_multiplier: 0.9,
   // worldgen
-  food_patch_count: 7,
-  food_patch_size: 25,
+  food_patch_count: 27,
+  food_patch_size: 60,
   food_patch_size_variance: 3,
-  barrier_patch_count: 6,
-  barrier_patch_size: 28,
+  food_patch_capacity: 50,
+  barrier_patch_count: 36,
+  barrier_patch_size: 128,
   // ant behavior
   wander_transition_chance_percent: 4.25,
 });

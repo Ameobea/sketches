@@ -4,6 +4,7 @@ pub struct UserConf {
     pub food_patch_count: usize,
     pub food_patch_size: usize,
     pub food_patch_size_variance: usize,
+    pub food_patch_capacity: usize,
     pub barrier_patch_count: usize,
     pub barrier_patch_size: usize,
     // ant behavior
@@ -15,11 +16,12 @@ pub struct UserConf {
 
 const fn default_user_conf() -> UserConf {
     UserConf {
-        food_patch_count: 7,
-        food_patch_size: 25,
+        food_patch_count: 27,
+        food_patch_size: 60,
         food_patch_size_variance: 3,
-        barrier_patch_count: 6,
-        barrier_patch_size: 28,
+        food_patch_capacity: 50,
+        barrier_patch_count: 36,
+        barrier_patch_size: 128,
         wander_transition_chance_percent: 4.25,
         pheremone_decay_interval: 500.0,
         pheremone_decay_multiplier: 0.9,

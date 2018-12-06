@@ -16,15 +16,15 @@ pub struct UserConf {
 
 const fn default_user_conf() -> UserConf {
     UserConf {
-        food_patch_count: 27,
-        food_patch_size: 60,
+        food_patch_count: 200,
+        food_patch_size: 20,
         food_patch_size_variance: 3,
-        food_patch_capacity: 50,
-        barrier_patch_count: 36,
+        food_patch_capacity: 5,
+        barrier_patch_count: 44,
         barrier_patch_size: 128,
         wander_transition_chance_percent: 4.25,
-        pheremone_decay_interval: 500.0,
-        pheremone_decay_multiplier: 0.9,
+        pheremone_decay_interval: 250.0,
+        pheremone_decay_multiplier: 0.8,
     }
 }
 

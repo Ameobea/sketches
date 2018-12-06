@@ -3,7 +3,8 @@
     const_fn_union,
     const_transmute,
     thread_local,
-    untagged_unions
+    bind_by_move_pattern_guards,
+    nll
 )]
 
 extern crate common;
@@ -77,7 +78,7 @@ impl AntCellState {
 
 impl CellState for AntCellState {}
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum WanderDirection {
     Up,
     Stay,
@@ -122,7 +123,7 @@ impl Default for WanderDirection {
     }
 }
 
-#[derive(Clone, Copy, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct WanderingState {
     x_dir: WanderDirection,
     y_dir: WanderDirection,
@@ -150,17 +151,20 @@ impl WanderingState {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum AntEntityState {
     Wandering(WanderingState),
-    FollowingPheremonesToFood,
-    ReturningToNestWithFood,
+    FollowingPheremonesToFood { last_diff: (isize, isize) },
+    ReturningToNestWithFood { last_diff: (isize, isize) },
 }
 
 impl EntityState<AntCellState> for AntEntityState {}
 
 #[derive(Clone, Copy, Default)]
-pub struct AntMutEntityState {}
+pub struct AntMutEntityState {
+    pub nest_x: usize,
+    pub nest_y: usize,
+}
 
 impl MutEntityState for AntMutEntityState {}
 
@@ -170,14 +174,16 @@ pub enum PheremoneType {
 }
 
 pub enum AntCellAction {
-    LayPheremone(PheremoneType),
+    LayPheremone(PheremoneType, f32),
     EatFood,
 }
 
 impl CellAction<AntCellState> for AntCellAction {}
 
 pub enum AntEntityAction {
-    UpdateWanderState,
+    UpdateWanderState { reset: bool },
+    DepositFood,
+    FollowFoodTrail(isize, isize),
 }
 
 impl EntityAction<AntCellState, AntEntityState> for AntEntityAction {}
@@ -189,15 +195,15 @@ extern "C" {
     pub fn canvas_render(colors: &[u8]);
 }
 
-#[inline(always)]
-fn average_colors(color1: [u8; 4], color2: [u8; 4]) -> [u8; 4] {
-    [
-        (color1[0] / 2 + color2[0] / 2),
-        (color1[1] / 2 + color2[1] / 2),
-        (color2[2] / 2 + color2[2] / 2),
-        255,
-    ]
-}
+// #[inline(always)]
+// fn average_colors(color1: [u8; 4], color2: [u8; 4]) -> [u8; 4] {
+//     [
+//         (color1[0] / 2 + color2[0] / 2),
+//         (color1[1] / 2 + color2[1] / 2),
+//         (color2[2] / 2 + color2[2] / 2),
+//         255,
+//     ]
+// }
 
 fn calc_color(
     cell: &Cell<AntCellState>,
@@ -205,7 +211,7 @@ fn calc_color(
     _entity_container: &EntityContainer<AntCellState, AntEntityState, AntMutEntityState>,
 ) -> [u8; 4] {
     if !entity_indexes.is_empty() {
-        return [255, 25, 42, 255];
+        return [66, 244, 212, 255];
     }
 
     match cell.state {
@@ -263,6 +269,14 @@ impl
             if let AntCellState::Empty(ref mut pheremones) = cell.state {
                 pheremones.returning *= pheremone_decay_multiplier;
                 pheremones.wandering *= pheremone_decay_multiplier;
+
+                if pheremones.returning < 0.5 {
+                    pheremones.returning = 0.0;
+                }
+
+                if pheremones.wandering < 0.5 {
+                    pheremones.wandering = 0.0;
+                }
             }
         }
     }

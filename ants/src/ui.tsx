@@ -102,14 +102,14 @@ export const getInitialConf = (loadDefaults: boolean = false) => {
       // simulation controls
       simulation_tick_delay: 10,
       scale_factor: 3.0,
-      pheremone_decay_interval: 500,
-      pheremone_decay_multiplier: 0.9,
+      pheremone_decay_interval: 250,
+      pheremone_decay_multiplier: 0.8,
       // worldgen
-      food_patch_count: 27,
-      food_patch_size: 60,
+      food_patch_count: 200,
+      food_patch_size: 28,
       food_patch_size_variance: 3,
-      food_patch_capacity: 50,
-      barrier_patch_count: 36,
+      food_patch_capacity: 5,
+      barrier_patch_count: 44,
       barrier_patch_size: 128,
       // ant behavior
       wander_transition_chance_percent: 4.25,

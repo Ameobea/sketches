@@ -208,24 +208,28 @@ extern "C" {
 fn calc_color(
     cell: &Cell<AntCellState>,
     entity_indexes: &[usize],
-    _entity_container: &EntityContainer<AntCellState, AntEntityState, AntMutEntityState>,
+    entity_container: &EntityContainer<AntCellState, AntEntityState, AntMutEntityState>,
 ) -> [u8; 4] {
-    if !entity_indexes.is_empty() {
-        return [66, 244, 212, 255];
+    if let Some(entity_ix) = entity_indexes.first() {
+        return match unsafe { &entity_container.get(*entity_ix).state } {
+            AntEntityState::Wandering(_) => [67, 239, 55, 255],
+            AntEntityState::ReturningToNestWithFood { .. } => [255, 251, 63, 255],
+            AntEntityState::FollowingPheremonesToFood { .. } => [234, 30, 156, 255],
+        };
     }
 
     match cell.state {
-        AntCellState::Barrier => [255, 255, 255, 255],
+        AntCellState::Barrier => [255, 255, 255, 120],
         AntCellState::Empty(Pheremones {
             wandering,
             returning,
         }) => {
             let wandering_intensity = (wandering * 25.0).min(255.0) as u8;
             let returning_intensity = (returning * 25.0).min(255.0) as u8;
-            [returning_intensity, 12, wandering_intensity, 255]
+            [returning_intensity, 12, wandering_intensity, 120]
         },
-        AntCellState::Food(_quantity) => [12, 223, 30, 255],
-        AntCellState::Anthill => [252, 223, 32, 255],
+        AntCellState::Food(_quantity) => [12, 223, 30, 120],
+        AntCellState::Anthill => [252, 223, 32, 120],
     }
 }
 

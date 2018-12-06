@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use minutiae::{
     engine::{iterator::SerialEntityIterator, serial::SerialEngine},
     universe::Universe2D,
@@ -33,9 +31,11 @@ fn exec_cell_action(
 
                     match pheremone_type {
                         PheremoneType::Wandering =>
-                            pheremones.wandering = (pheremones.wandering + intensity).min(18.0),
+                            pheremones.wandering =
+                                (pheremones.wandering + intensity).min(active_conf().pheromone_max),
                         PheremoneType::Returning =>
-                            pheremones.returning = (pheremones.returning + intensity).min(18.0),
+                            pheremones.returning =
+                                (pheremones.returning + intensity).min(active_conf().pheromone_max),
                     }
                 },
                 AntCellAction::EatFood => {
@@ -127,11 +127,6 @@ fn exec_self_action(
                     entity.state = AntEntityState::Wandering(WanderingState::default());
                 },
                 SelfAction::Custom(AntEntityAction::FollowFoodTrail(x_diff, y_diff)) => {
-                    // 20% chance of ignoring
-                    // if rng().gen_range(1, 10) <= 2 {
-                    //     return;
-                    // }
-
                     let last_diff = (*x_diff, *y_diff);
                     entity.state = AntEntityState::FollowingPheremonesToFood { last_diff };
                 },
@@ -352,20 +347,22 @@ impl
                     return;
                 }
 
-                let mut surrounding_weights: [((usize, usize), f32); 9] = [((0, 0), 1.0); 9];
-                let mut total_wander = 0.0;
-                let mut total_return = 0.0;
+                let mut surrounding_weights: [((usize, usize), f32); 9] = [((0, 0), 0.0); 9];
                 get_visible_cells_iterator(cur_x, cur_y, &universe.cells)
                     .enumerate()
                     .for_each(|(i, ((x, y), cell_state))| {
                         if let AntCellState::Empty(pheromones) = cell_state {
-                            total_wander += pheromones.wandering;
-                            total_return += pheromones.returning;
-                            surrounding_weights[i] = ((x, y), (pheromones.returning).max(0.0));
+                            surrounding_weights[i] = (
+                                (x, y),
+                                active_conf().base_wandering_weight + pheromones.returning,
+                            );
                         }
                     });
 
-                if surrounding_weights.iter().all(|(_, weight)| *weight < 1.0) {
+                if surrounding_weights
+                    .iter()
+                    .all(|(_, weight)| *weight < active_conf().scout_pursuit_cutoff)
+                {
                     // No food within sight, no food trails to follow, so continue wandering.
                     let movement_successful =
                         translate(x_dir.get_coord_offset(), y_dir.get_coord_offset()).is_ok();
@@ -390,7 +387,9 @@ impl
                     return;
                 };
             },
-            AntEntityState::ReturningToNestWithFood { last_diff } => {
+            AntEntityState::ReturningToNestWithFood {
+                last_diff: (last_diff_x, last_diff_y),
+            } => {
                 let mut translate = |x_diff, y_diff| -> Result<(usize, usize), ()> {
                     let new_coords =
                         match validate_move(cur_x, cur_y, x_diff, y_diff, &universe.cells) {
@@ -420,81 +419,126 @@ impl
                     return;
                 }
 
-                let (mut x_bias, mut y_bias) = (last_diff.0 * 3, last_diff.0 * 3);
-
-                let mut inc_biases = |bias: isize, x: usize, y: usize| {
-                    let (x_diff, y_diff) =
-                        (x as isize - cur_x as isize, y as isize - cur_y as isize);
-                    x_bias += x_diff * bias;
-                    y_bias += y_diff * bias;
-                };
-                let mut max_wander_phero = (0.0, (0, 0));
-                let AntMutEntityState { nest_x, nest_y } = entity.mut_state;
-                let diff_mag =
-                    ((cur_x as isize - nest_x as isize) + (cur_y as isize - nest_y as isize)).abs();
-                inc_biases((diff_mag / 2).min(3), nest_x, nest_y);
-
-                for ((x, y), cell_state) in
-                    get_visible_cells_iterator(cur_x, cur_y, &universe.cells)
+                // try to make our way home.
+                let mut surrounding_weights: [((usize, usize), f32); 9] = [((0, 0), 0.0); 9];
+                for (i, ((x, y), cell_state)) in
+                    get_visible_cells_iterator(cur_x, cur_y, &universe.cells).enumerate()
                 {
-                    match cell_state {
-                        AntCellState::Anthill =>
-                            if move_towards(cur_x, cur_y, x, y).is_ok() {
-                                lay_pheromone(PheremoneType::Returning, 2.0);
-                                return;
-                            },
-                        AntCellState::Barrier | AntCellState::Food(_) => inc_biases(-2, x, y),
-                        AntCellState::Empty(pheromones) => {
-                            if pheromones.wandering > pheromones.returning
-                                && pheromones.returning > 0.0
-                            {
-                                inc_biases(2, x, y);
-                            } else if pheromones.returning > pheromones.wandering {
-                                inc_biases(-1, x, y);
-                            }
-
-                            if pheromones.wandering > max_wander_phero.0 {
-                                max_wander_phero = (pheromones.wandering, (x, y));
-                            }
-                        },
+                    if let AntCellState::Anthill = cell_state {
+                        cell_action_executor(
+                            AntCellAction::LayPheremone(PheremoneType::Returning, 5.0),
+                            get_index(cur_x, cur_y, UNIVERSE_SIZE as usize),
+                        );
+                        move_towards(cur_x, cur_y, x, y).expect("Failed to move to the anthill...");
+                        return;
+                    } else if let AntCellState::Empty(pheromones) = cell_state {
+                        surrounding_weights[i] = (
+                            (x, y),
+                            active_conf().base_returning_weight + pheromones.wandering,
+                        );
+                    } else {
+                        surrounding_weights[i] = ((x, y), 0.0);
                     }
                 }
-                if max_wander_phero.0 > 0.0 {
-                    inc_biases(1, (max_wander_phero.1).0, (max_wander_phero.1).1);
+
+                let (anthill_diff_x, anthill_diff_y) = (
+                    entity.mut_state.nest_x as isize - cur_x as isize,
+                    entity.mut_state.nest_y as isize - cur_y as isize,
+                );
+                for ((x, y), weight) in &mut surrounding_weights {
+                    if (*x, *y) == (cur_x, cur_y) {
+                        *weight = 0.0;
+                    }
+
+                    // apply bias of the anthill
+                    if ((anthill_diff_x < 0) == (*x < cur_x))
+                        || ((anthill_diff_x > 0) == (*x > cur_x))
+                    {
+                        *weight *= active_conf().anthill_attraction_pos_bias;
+                    }
+                    if ((anthill_diff_x < 0) == (*x > cur_x))
+                        || ((anthill_diff_x > 0) == (*x < cur_x))
+                    {
+                        *weight *= active_conf().anthill_attraction_neg_bias;
+                    }
+
+                    if ((anthill_diff_y < 0) == (*y < cur_y))
+                        || ((anthill_diff_y > 0) == (*y > cur_y))
+                    {
+                        *weight *= active_conf().anthill_attraction_pos_bias;
+                    }
+                    if ((anthill_diff_y < 0) == (*y > cur_y))
+                        || ((anthill_diff_y > 0) == (*y < cur_y))
+                    {
+                        *weight *= active_conf().anthill_attraction_neg_bias;
+                    }
+
+                    // apply bias of last diff
+                    if ((*last_diff_x < 0) == (*x < cur_x)) || ((*last_diff_x > 0) == (*x > cur_x))
+                    {
+                        *weight *= active_conf().returning_maintain_pos_bias;
+                    }
+                    if ((*last_diff_x < 0) == (*x > cur_x)) || ((*last_diff_x > 0) == (*x < cur_x))
+                    {
+                        *weight *= active_conf().returning_maintain_neg_bias;
+                    }
+
+                    if ((*last_diff_y < 0) == (*y < cur_y)) || ((*last_diff_y > 0) == (*y > cur_y))
+                    {
+                        *weight *= active_conf().returning_maintain_pos_bias;
+                    }
+                    if ((*last_diff_y < 0) == (*y > cur_y)) || ((*last_diff_y > 0) == (*y < cur_y))
+                    {
+                        *weight *= active_conf().returning_maintain_neg_bias;
+                    }
                 }
 
-                match translate(clamp(x_bias, -1, 1), clamp(y_bias, -1, 1)) {
-                    Ok(_) => lay_pheromone(PheremoneType::Returning, 4.0),
-                    Err(()) => {
-                        for _ in 0..6 {
-                            if rng().gen::<bool>() {
-                                x_bias = 0
-                            } else {
-                                y_bias = 0;
-                            }
-                            if x_bias == 0 && y_bias == 0 {
-                                break;
-                            }
-
-                            if translate(clamp(x_bias, -1, 1), clamp(y_bias, -1, 1)).is_ok() {
-                                lay_pheromone(PheremoneType::Returning, 1.0);
-                                return;
-                            }
+                if surrounding_weights
+                    .iter_mut()
+                    .map(|((x, y), ref mut weight)| {
+                        if *x == 0 && *y == 0 {
+                            *weight = 0.0
                         }
-
-                        // Try to move *anywhere*
-                        for y in -1..=1 {
-                            for x in -1..=1 {
-                                if translate(x, y).is_ok() {
-                                    lay_pheromone(PheremoneType::Returning, 1.0);
-                                    return;
-                                }
-                            }
-                        }
-
-                        common::error("We're PROPER stuck.");
-                    },
+                        ((x, y), weight)
+                    })
+                    .all(|(_, weight)| *weight < 1.0)
+                {
+                    // We've lost the trail; try moving randomly
+                    if translate(rng().gen_range(-1, 2), rng().gen_range(-1, 2)).is_ok() {
+                        lay_pheromone(PheremoneType::Returning, 0.5);
+                    }
+                    return;
                 }
+
+                let mut translate = |x_diff, y_diff| -> Result<(usize, usize), ()> {
+                    let new_coords =
+                        match validate_move(cur_x, cur_y, x_diff, y_diff, &universe.cells) {
+                            Some(new_coords) => new_coords,
+                            None => Err(())?,
+                        };
+                    self_action_executor(SelfAction::Translate(x_diff, y_diff));
+                    Ok(new_coords)
+                };
+
+                let mut move_towards = |cur_x: usize,
+                                        cur_y: usize,
+                                        dst_x: usize,
+                                        dst_y: usize|
+                 -> Result<(usize, usize), ()> {
+                    let (xdiff, ydiff) = (
+                        dst_x as isize - cur_x as isize,
+                        dst_y as isize - cur_y as isize,
+                    );
+                    let (xdiff, ydiff) = (clamp(xdiff, -1, 1), clamp(ydiff, -1, 1));
+                    translate(xdiff, ydiff)
+                };
+
+                let ((x, y), _) = surrounding_weights
+                    .choose_weighted(rng(), |(_, weight)| *weight)
+                    .expect("Probability choice failed");
+                if move_towards(cur_x, cur_y, *x, *y).is_ok() {
+                    lay_pheromone(PheremoneType::Returning, 1.0);
+                };
             },
             AntEntityState::FollowingPheremonesToFood {
                 last_diff: (last_diff_x, last_diff_y),
@@ -548,30 +592,17 @@ impl
                     return;
                 }
 
-                let mut surrounding_weights: [((usize, usize), f32); 9] = [((0, 0), 1.0); 9];
-                let mut total_wander = 0.0;
-                let mut total_return = 0.0;
+                let mut surrounding_weights: [((usize, usize), f32); 9] = [((0, 0), 0.0); 9];
                 get_visible_cells_iterator(cur_x, cur_y, &universe.cells)
                     .enumerate()
                     .for_each(|(i, ((x, y), cell_state))| {
                         if let AntCellState::Empty(pheromones) = cell_state {
-                            total_wander += pheromones.wandering;
-                            total_return += pheromones.returning;
-                            surrounding_weights[i] = ((x, y), pheromones.returning);
+                            surrounding_weights[i] = (
+                                (x, y),
+                                active_conf().base_following_weight + pheromones.returning,
+                            );
                         }
                     });
-
-                // If there's more than 2x as much wandering pheros as there are returning
-                // surrounding us, 20% chance of going into wander mode.
-                // if total_wander > 20.0
-                //     && total_wander > (total_return * 2.0)
-                //     && rng().gen_range(0, 10) >= 2
-                // {
-                //     self_action_executor(SelfAction::Custom(AntEntityAction::UpdateWanderState {
-                //         reset: true,
-                //     }));
-                //     return;
-                // }
 
                 // apply bias of last diff
                 for ((x, y), weight) in &mut surrounding_weights {
@@ -579,17 +610,11 @@ impl
                         *weight = 0.0;
                     }
 
-                    // if (*x as isize == cur_x as isize + last_diff_x)
-                    //     && (*y as isize == cur_y as isize + last_diff_y)
-                    // {
-                    //     *weight *= 0.2;
-                    // }
-
                     if ((*last_diff_x < 0) == (*x < cur_x)) || ((*last_diff_x > 0) == (*x > cur_x))
                     {
                         *weight *= 2.0;
-                    } else if ((*last_diff_x < 0) == (*x > cur_x))
-                        || ((*last_diff_x > 0) == (*x < cur_x))
+                    }
+                    if ((*last_diff_x < 0) == (*x > cur_x)) || ((*last_diff_x > 0) == (*x < cur_x))
                     {
                         *weight *= 0.5;
                     }
@@ -597,14 +622,14 @@ impl
                     if ((*last_diff_y < 0) == (*y < cur_y)) || ((*last_diff_y > 0) == (*y > cur_y))
                     {
                         *weight *= 2.0;
-                    } else if ((*last_diff_y < 0) == (*y > cur_y))
-                        || ((*last_diff_y > 0) == (*y < cur_y))
+                    }
+                    if ((*last_diff_y < 0) == (*y > cur_y)) || ((*last_diff_y > 0) == (*y < cur_y))
                     {
                         *weight *= 0.5;
                     }
                 }
 
-                if surrounding_weights.iter().all(|(_, weight)| *weight < 8.0) {
+                if surrounding_weights.iter().all(|(_, weight)| *weight < 6.0) {
                     // We've lost the trail; go back to wandering.
                     self_action_executor(SelfAction::Custom(AntEntityAction::UpdateWanderState {
                         reset: true,

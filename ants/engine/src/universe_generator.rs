@@ -5,8 +5,6 @@ use super::*;
 
 pub struct AntUniverseGenerator(pub &'static UserConf);
 
-const INITIAL_ENTITY_COUNT: usize = 80;
-
 fn get_start_coords() -> (usize, usize) {
     let x: usize = rng().gen_range(0, UNIVERSE_SIZE as usize);
     let y: usize = rng().gen_range(0, UNIVERSE_SIZE as usize);
@@ -22,7 +20,7 @@ fn is_in_bounds(x: usize, y: usize, x_offset: isize, y_offset: isize) -> Option<
     }
 }
 
-const MAX_PLACEMENT_ITERS: usize = 1000;
+const MAX_PLACEMENT_ITERS: usize = 10_000;
 
 /// `wander_change_chance` should be from 0 to 100 (percentage chance of changing) inclusive.
 fn gen_terrain(
@@ -108,7 +106,7 @@ impl Generator<AntCellState, AntEntityState, AntMutEntityState> for AntUniverseG
         let mut entities = vec![Vec::new(); (UNIVERSE_SIZE * UNIVERSE_SIZE) as usize];
         let (anthill_x, anthill_y) = get_start_coords();
         let anthill_universe_coord = get_index(anthill_x, anthill_y, UNIVERSE_SIZE as usize);
-        for _ in 0..INITIAL_ENTITY_COUNT {
+        for _ in 0..active_conf().ant_count as usize {
             let entity = Entity::new(
                 AntEntityState::Wandering(WanderingState::default()),
                 AntMutEntityState {
@@ -144,6 +142,15 @@ impl Generator<AntCellState, AntEntityState, AntMutEntityState> for AntUniverseG
         );
 
         cells[anthill_universe_coord].state = AntCellState::Anthill;
+        // clear around the anthill
+        iter_visible(anthill_x, anthill_y, 2, UNIVERSE_SIZE as usize).for_each(|(x, y)| {
+            if (x, y) == (anthill_x, anthill_y) {
+                return;
+            }
+
+            let universe_ix = get_index(x, y, UNIVERSE_SIZE as usize);
+            cells[universe_ix].state = AntCellState::Empty(Pheremones::default());
+        });
 
         (cells, entities)
     }

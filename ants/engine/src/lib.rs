@@ -1,4 +1,10 @@
-#![feature(box_syntax, const_transmute, thread_local)]
+#![feature(
+    box_syntax,
+    const_fn_union,
+    const_transmute,
+    thread_local,
+    untagged_unions
+)]
 
 extern crate common;
 extern crate minutiae;
@@ -11,7 +17,7 @@ extern crate wasm_bindgen;
 #[macro_use]
 extern crate serde_derive;
 
-use std::{mem, ptr};
+use std::mem;
 
 use minutiae::{
     emscripten::CanvasRenderer,
@@ -20,7 +26,6 @@ use minutiae::{
     universe::Universe2D,
 };
 use rand::Rng;
-use rand_core::SeedableRng;
 use rand_pcg::Pcg32;
 use wasm_bindgen::prelude::*;
 
@@ -34,9 +39,16 @@ pub mod conf;
 use self::conf::*;
 
 const UNIVERSE_SIZE: u32 = 300;
+const VIEW_DISTANCE: usize = 1;
 
 #[thread_local]
 static mut RNG: Pcg32 = unsafe { mem::transmute(0u128) };
+
+fn reinit_rng() {
+    *rng() = unsafe { mem::transmute((-42234i32, 1991u32, -234i32, 44444u32)) };
+    rng().gen::<u32>();
+    rng().gen::<u32>();
+}
 
 pub fn rng() -> &'static mut Pcg32 { unsafe { &mut RNG } }
 
@@ -57,7 +69,7 @@ pub enum AntCellState {
 impl AntCellState {
     pub fn is_traversable(&self) -> bool {
         match self {
-            AntCellState::Barrier | AntCellState::Food(_) => false,
+            AntCellState::Barrier => false,
             _ => true,
         }
     }
@@ -159,6 +171,7 @@ pub enum PheremoneType {
 
 pub enum AntCellAction {
     LayPheremone(PheremoneType),
+    EatFood,
 }
 
 impl CellAction<AntCellState> for AntCellAction {}
@@ -284,12 +297,7 @@ pub fn init_universe() {
 #[wasm_bindgen]
 pub fn init() {
     common::set_panic_hook(); // this will trigger `console.error` to be called during panics
-    unsafe {
-        ptr::write(
-            &mut RNG as *mut _,
-            Pcg32::from_seed([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]),
-        )
-    };
+    reinit_rng();
 
     init_universe();
 }

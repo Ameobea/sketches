@@ -71,6 +71,24 @@ wasm
     ];
 
     const root = document.getElementById('root');
-    ReactDOM.render(<UI buttons={buttons} applyConf={engine.set_user_conf} />, root);
+    ReactDOM.render(
+      <UI
+        buttons={buttons}
+        applyConf={(confJson: string) => {
+          engine.set_user_conf(confJson);
+
+          // show universe gen in realtime if we're paused.
+          if (!intervalHandle) {
+            engine.init_universe();
+            pause();
+            tick!();
+          }
+
+          // persist settings to localstorage
+          localStorage.setItem('conf', confJson);
+        }}
+      />,
+      root
+    );
   })
   .catch(console.error);

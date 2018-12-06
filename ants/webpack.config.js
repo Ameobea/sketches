@@ -34,7 +34,7 @@ module.exports = {
   plugins: [
     new HtmlWebpackPlugin({
       alwaysWriteToDisk: true,
-      title: 'Untitled Sketch',
+      title: 'Ant Colony Simulation',
       minify: true,
       template: 'index.hbs',
     }),

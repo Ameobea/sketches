@@ -41,7 +41,7 @@ fn gen_terrain(
     };
     let real_size = ((size as isize) + variance).max(0) as usize;
 
-    for _ in 0..count {
+    for i in 0..count {
         let mut wander_state = WanderingState::default();
         let (mut x, mut y) = get_start_coords();
         let mut placed_tiles: Vec<(usize, usize)> = Vec::with_capacity(size);

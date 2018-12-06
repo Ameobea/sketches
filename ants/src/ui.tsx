@@ -50,7 +50,7 @@ const SimulationControls = ({ buttons, onChange, state }) => (
 );
 
 const worldGenSettings = [
-  { label: 'food_patch_count', type: 'range', min: 0, max: 500, steps: 200 },
+  { label: 'food_patch_count', type: 'range', min: 0, max: 500, steps: 250 },
   { label: 'food_patch_size', type: 'range', min: 0, max: 100, steps: 100 },
   { label: 'food_patch_size_variance', type: 'range', min: 0, max: 100, steps: 100 },
   { label: 'food_patch_capacity', type: 'range', min: 1, max: 5000, scale: 'log' },
@@ -93,25 +93,32 @@ const AntBehaviorSettings = ({ onChange, state }) => (
   />
 );
 
-const getInitialState = () => ({
-  // simulation controls
-  simulation_tick_delay: 10,
-  scale_factor: 3.0,
-  pheremone_decay_interval: 500,
-  pheremone_decay_multiplier: 0.9,
-  // worldgen
-  food_patch_count: 27,
-  food_patch_size: 60,
-  food_patch_size_variance: 3,
-  food_patch_capacity: 50,
-  barrier_patch_count: 36,
-  barrier_patch_size: 128,
-  // ant behavior
-  wander_transition_chance_percent: 4.25,
-});
+export const getInitialConf = (loadDefaults: boolean = false) => {
+  const storedConf = localStorage.getItem('conf');
+  if (!loadDefaults && storedConf) {
+    return JSON.parse(storedConf);
+  } else {
+    return {
+      // simulation controls
+      simulation_tick_delay: 10,
+      scale_factor: 3.0,
+      pheremone_decay_interval: 500,
+      pheremone_decay_multiplier: 0.9,
+      // worldgen
+      food_patch_count: 27,
+      food_patch_size: 60,
+      food_patch_size_variance: 3,
+      food_patch_capacity: 50,
+      barrier_patch_count: 36,
+      barrier_patch_size: 128,
+      // ant behavior
+      wander_transition_chance_percent: 4.25,
+    };
+  }
+};
 
 const UI = ({ buttons, applyConf }) => {
-  const [mergedConf, setMergedConf] = useState(getInitialState());
+  const [mergedConf, setMergedConf] = useState(getInitialConf());
 
   const handleChange = state => {
     const newMergedConf = { ...mergedConf, ...state };
@@ -121,11 +128,26 @@ const UI = ({ buttons, applyConf }) => {
 
   return (
     <Fragment>
-      <SimulationControls buttons={buttons} onChange={handleChange} state={mergedConf} />
+      <SimulationControls
+        buttons={[
+          ...buttons,
+          {
+            type: 'button',
+            label: 'default settings',
+            action: () => {
+              const defaultConf = getInitialConf(true);
+              setMergedConf(defaultConf);
+              applyConf(JSON.stringify(defaultConf));
+            },
+          },
+        ]}
+        onChange={handleChange}
+        state={mergedConf}
+      />
       <WorldGenerationSettings onChange={handleChange} state={mergedConf} />
       <AntBehaviorSettings onChange={handleChange} state={mergedConf} />
     </Fragment>
   );
 };
 
-export default React.memo(UI);
+export default UI;

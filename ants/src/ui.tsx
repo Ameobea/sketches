@@ -21,7 +21,7 @@ const baseSimulationControlSettings = [
     stepSize: 25,
   },
   { label: 'pheremone_decay_multiplier', type: 'range', min: 0.0, max: 1.0 },
-  { label: 'pheromone_max', type: 'range', min: 1.0, max: 100.0 },
+  { label: 'pheromone_max', type: 'range', min: 0.0, max: 100.0 },
 ];
 
 const internalSettingHandlers = {
@@ -40,7 +40,6 @@ const SimulationControls = ({ buttons, onChange, state }) => (
     settings={[...buttons, ...baseSimulationControlSettings]}
     onChange={(key, val, state) => {
       const internalHandler = internalSettingHandlers[key];
-      console.log(internalSettingHandlers, key, internalHandler);
       if (internalHandler) {
         internalHandler(val);
       }
@@ -108,11 +107,18 @@ const antBehaviorSettings = [
     label: 'returning_maintain_pos_bias',
     type: 'range',
     min: 0.0,
-    max: 10.0,
+    max: 50.0,
     steps: 100,
   },
   {
     label: 'returning_maintain_neg_bias',
+    type: 'range',
+    min: 0.0,
+    max: 10.0,
+    steps: 100,
+  },
+  {
+    label: 'returning_wander_threshold',
     type: 'range',
     min: 0.0,
     max: 10.0,
@@ -174,34 +180,32 @@ export const getInitialConf = (loadDefaults: boolean = false) => {
     return JSON.parse(storedConf);
   } else {
     return {
-      // simulation controls
-      simulation_tick_delay: 10,
-      scale_factor: 3.0,
+      simulation_tick_delay: 0.1,
+      scale_factor: 3,
       pheremone_decay_interval: 250,
-      pheremone_decay_multiplier: 0.8,
-      pheromone_max: 15.0,
+      pheremone_decay_multiplier: 0.94,
+      pheromone_max: 11,
       show_graphics: true,
-      // worldgen
-      ant_count: 80,
+      ant_count: 308,
       food_patch_count: 248,
       food_patch_size: 27,
       food_patch_size_variance: 3,
       food_patch_capacity: 5,
       barrier_patch_count: 44,
       barrier_patch_size: 128,
-      // ant behavior
       wander_transition_chance_percent: 4.25,
-      anthill_attraction_pos_bias: 1.2,
-      anthill_attraction_neg_bias: 0.9,
+      anthill_attraction_pos_bias: 3.07,
+      anthill_attraction_neg_bias: 1,
       anthill_attraction_distrance_multiplier: 0.1,
-      returning_maintain_pos_bias: 2.5,
+      returning_maintain_pos_bias: 50,
       returning_maintain_neg_bias: 0.3,
-      following_pos_bias: 2.0,
+      following_pos_bias: 1.1,
       following_neg_bias: 0.5,
-      scout_pursuit_cutoff: 3.0,
-      base_wandering_weight: 0.0,
-      base_returning_weight: 0.0,
-      base_following_weight: 0.0,
+      scout_pursuit_cutoff: 13.25,
+      base_wandering_weight: 0.12,
+      base_returning_weight: 0.03,
+      base_following_weight: 0.12,
+      returning_wander_threshold: 1.1,
     };
   }
 };

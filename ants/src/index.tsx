@@ -26,11 +26,30 @@ export const canvas_render = (colors: Uint8Array) => {
   render(canvasScaleFactor, 0, 0);
 };
 
+let ticks = 0;
+let countFood: () => number = () => {
+  console.error('`countTicks` called before it was initialized!');
+  return 0;
+};
+let tickTotals: number[] = [];
 let tick: null | (() => void) = null;
 let intervalHandle: number | null;
 let tickDelay = 10.0;
 export const register_tick_callback = (minutiaeTick: () => void) => {
-  tick = minutiaeTick;
+  tick = () => {
+    minutiaeTick();
+    if (ticks % 100 == 0 && ticks != 0) {
+      tickTotals.push(countFood());
+      if (tickTotals.length == 500) {
+        console.log(JSON.stringify(tickTotals));
+      } else if (tickTotals.length % 50 == 0 && tickTotals.length > 0) {
+        console.log(tickTotals.length);
+      }
+    }
+
+    ticks += 1;
+  };
+
   intervalHandle = setInterval(tick, tickDelay);
 };
 
@@ -55,7 +74,9 @@ export const resume = (delay?: number) => {
 wasm
   .then(engine => {
     initWebGL();
+    engine.set_user_conf(JSON.stringify(getInitialConf(false)));
     engine.init();
+    countFood = engine.count_collected_food;
 
     const applyConf = (confJson: string) => {
       engine.set_user_conf(confJson);
@@ -77,6 +98,8 @@ wasm
         type: 'button',
         label: 'reset',
         action: () => {
+          tickTotals = [];
+          ticks = 0;
           pause();
           // Delete the old universe, freeing associated resources, and trigger a new tick callback
           // to be set.

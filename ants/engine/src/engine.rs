@@ -8,6 +8,15 @@ use super::*;
 
 pub struct AntEngine;
 
+static mut COLLECTED_FOOD: usize = 0;
+
+#[wasm_bindgen]
+pub fn count_collected_food() -> usize {
+    let count = unsafe { COLLECTED_FOOD };
+    unsafe { COLLECTED_FOOD = 0 };
+    count
+}
+
 fn exec_cell_action(
     action: &AntOwnedAction,
     universe: &mut Universe2D<AntCellState, AntEntityState, AntMutEntityState>,
@@ -124,6 +133,7 @@ fn exec_self_action(
                     },
                 SelfAction::Custom(AntEntityAction::DepositFood) => {
                     common::log("Food deposited!");
+                    unsafe { COLLECTED_FOOD += 1 };
                     entity.state = AntEntityState::Wandering(WanderingState::default());
                 },
                 SelfAction::Custom(AntEntityAction::FollowFoodTrail(x_diff, y_diff)) => {
@@ -352,10 +362,15 @@ impl
                     .enumerate()
                     .for_each(|(i, ((x, y), cell_state))| {
                         if let AntCellState::Empty(pheromones) = cell_state {
-                            surrounding_weights[i] = (
-                                (x, y),
-                                active_conf().base_wandering_weight + pheromones.returning,
-                            );
+                            if !validate_diagonal(cur_x, cur_y, x, y, &universe.cells) {
+                                // don't pick up on pheromone signals over walls
+                                surrounding_weights[i] = ((x, y), 0.0);
+                            } else {
+                                surrounding_weights[i] = (
+                                    (x, y),
+                                    active_conf().base_wandering_weight + pheromones.returning,
+                                );
+                            }
                         }
                     });
 
@@ -375,16 +390,17 @@ impl
                     return;
                 }
 
-                let ((x, y), _) = surrounding_weights
-                    .choose_weighted(rng(), |(_, weight)| *weight)
-                    .expect("Probability choice failed");
-                if move_towards(cur_x, cur_y, *x, *y).is_ok() {
-                    lay_pheromone(PheremoneType::Wandering, 1.5);
-                    self_action_executor(SelfAction::Custom(AntEntityAction::FollowFoodTrail(
-                        *x as isize - cur_x as isize,
-                        *y as isize - cur_y as isize,
-                    )));
-                    return;
+                if let Ok(((x, y), _)) =
+                    surrounding_weights.choose_weighted(rng(), |(_, weight)| *weight)
+                {
+                    if move_towards(cur_x, cur_y, *x, *y).is_ok() {
+                        lay_pheromone(PheremoneType::Wandering, 1.5);
+                        self_action_executor(SelfAction::Custom(AntEntityAction::FollowFoodTrail(
+                            *x as isize - cur_x as isize,
+                            *y as isize - cur_y as isize,
+                        )));
+                        return;
+                    }
                 };
             },
             AntEntityState::ReturningToNestWithFood {
@@ -432,6 +448,12 @@ impl
                         move_towards(cur_x, cur_y, x, y).expect("Failed to move to the anthill...");
                         return;
                     } else if let AntCellState::Empty(pheromones) = cell_state {
+                        if !validate_diagonal(cur_x, cur_y, x, y, &universe.cells) {
+                            // don't pick up on pheromone signals over walls
+                            surrounding_weights[i] = ((x, y), 0.0);
+                            continue;
+                        }
+
                         surrounding_weights[i] = (
                             (x, y),
                             active_conf().base_returning_weight + pheromones.wandering,
@@ -501,7 +523,7 @@ impl
                         }
                         ((x, y), weight)
                     })
-                    .all(|(_, weight)| *weight < 1.0)
+                    .all(|(_, weight)| *weight < active_conf().returning_wander_threshold)
                 {
                     // We've lost the trail; try moving randomly
                     if translate(rng().gen_range(-1, 2), rng().gen_range(-1, 2)).is_ok() {
@@ -533,12 +555,13 @@ impl
                     translate(xdiff, ydiff)
                 };
 
-                let ((x, y), _) = surrounding_weights
-                    .choose_weighted(rng(), |(_, weight)| *weight)
-                    .expect("Probability choice failed");
-                if move_towards(cur_x, cur_y, *x, *y).is_ok() {
-                    lay_pheromone(PheremoneType::Returning, 1.0);
-                };
+                if let Ok(((x, y), _)) =
+                    surrounding_weights.choose_weighted(rng(), |(_, weight)| *weight)
+                {
+                    if move_towards(cur_x, cur_y, *x, *y).is_ok() {
+                        lay_pheromone(PheremoneType::Returning, 1.0);
+                    }
+                }
             },
             AntEntityState::FollowingPheremonesToFood {
                 last_diff: (last_diff_x, last_diff_y),
@@ -597,10 +620,15 @@ impl
                     .enumerate()
                     .for_each(|(i, ((x, y), cell_state))| {
                         if let AntCellState::Empty(pheromones) = cell_state {
-                            surrounding_weights[i] = (
-                                (x, y),
-                                active_conf().base_following_weight + pheromones.returning,
-                            );
+                            if !validate_diagonal(cur_x, cur_y, x, y, &universe.cells) {
+                                // don't pick up on pheromone signals over walls
+                                surrounding_weights[i] = ((x, y), 0.0);
+                            } else {
+                                surrounding_weights[i] = (
+                                    (x, y),
+                                    active_conf().base_following_weight + pheromones.returning,
+                                );
+                            }
                         }
                     });
 
@@ -660,12 +688,13 @@ impl
                     translate(xdiff, ydiff)
                 };
 
-                let ((x, y), _) = surrounding_weights
-                    .choose_weighted(rng(), |(_, weight)| *weight)
-                    .expect("Probability choice failed");
-                if move_towards(cur_x, cur_y, *x, *y).is_ok() {
-                    lay_pheromone(PheremoneType::Wandering, 1.5);
-                };
+                if let Ok(((x, y), _)) =
+                    surrounding_weights.choose_weighted(rng(), |(_, weight)| *weight)
+                {
+                    if move_towards(cur_x, cur_y, *x, *y).is_ok() {
+                        lay_pheromone(PheremoneType::Wandering, 1.5);
+                    };
+                }
             },
         }
     }

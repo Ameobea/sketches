@@ -16,8 +16,7 @@ rand_core = "0.3.0"
 serde = "1.0.80"
 serde_json = "1.0.33"
 serde_derive = "1.0.80"
-# minutiae = "0.11.0"
-minutiae = { path="../../../minutiae/minutiae" }
+minutiae = "0.11.0"
 
 common = { path="../../common" }
 

@@ -190,7 +190,7 @@ impl EntityAction<AntCellState, AntEntityState> for AntEntityAction {}
 
 pub type AntOwnedAction = OwnedAction<AntCellState, AntEntityState, AntCellAction, AntEntityAction>;
 
-#[wasm_bindgen(module = "./index")]
+#[wasm_bindgen(raw_module = "./loop")]
 extern "C" {
     pub fn canvas_render(colors: &[u8]);
 }
@@ -235,7 +235,7 @@ fn calc_color(
 
 pub type OurUniverseType = Universe2D<AntCellState, AntEntityState, AntMutEntityState>;
 
-pub type OurEngineType = SerialEngine<
+pub type OurEngineType = dyn SerialEngine<
     AntCellState,
     AntEntityState,
     AntMutEntityState,

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, Fragment } from 'react';
 import ControlPanel from 'react-control-panel';
 
-import { pause, resume, setCanvasScaleFactor, setGraphicsDisplay } from '../';
+import { pause, resume, setCanvasScaleFactor, setGraphicsDisplay } from './loop';
 
 const baseSimulationControlSettings = [
   {
@@ -38,13 +38,13 @@ const SimulationControls = ({ buttons, onChange, state }) => (
     position="top-right"
     title="Simulation Controls"
     settings={[...buttons, ...baseSimulationControlSettings]}
-    onChange={(key, val, state) => {
+    onChange={(key, val) => {
       const internalHandler = internalSettingHandlers[key];
       if (internalHandler) {
         internalHandler(val);
       }
 
-      onChange(state);
+      onChange(key, val);
     }}
     state={state}
     width={550}
@@ -67,7 +67,7 @@ const WorldGenerationSettings = ({ onChange, state }) => (
     style={{ top: 310 }}
     title="World Generation"
     settings={worldGenSettings}
-    onChange={(_key, _val, state) => onChange(state)}
+    onChange={(key, val) => onChange(key, val)}
     state={state}
     width={550}
   />
@@ -168,7 +168,7 @@ const AntBehaviorSettings = ({ onChange, state }) => (
     style={{ top: 535 }}
     title="Ant Behavior"
     settings={antBehaviorSettings}
-    onChange={(_key, _val, state) => onChange(state)}
+    onChange={(key, val) => onChange(key, val)}
     state={state}
     width={550}
   />
@@ -213,8 +213,8 @@ export const getInitialConf = (loadDefaults: boolean = false) => {
 const UI = ({ buttons, applyConf }) => {
   const [mergedConf, setMergedConf] = useState(getInitialConf());
 
-  const handleChange = state => {
-    const newMergedConf = { ...mergedConf, ...state };
+  const handleChange = (key, val) => {
+    const newMergedConf = { ...mergedConf, [key]: val };
     setMergedConf(newMergedConf);
     applyConf(JSON.stringify(newMergedConf));
   };

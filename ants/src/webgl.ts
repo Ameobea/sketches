@@ -203,4 +203,7 @@ export const render = (scaleFactor: number, offsetX: number, offsetY: number) =>
 
   // draw the quad (2 triangles, 6 vertices)
   gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+  // Clean up allocated resources
+  gl.deleteTexture(localState.backgroundTexture);
 };

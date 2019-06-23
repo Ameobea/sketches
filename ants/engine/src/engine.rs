@@ -132,7 +132,6 @@ fn exec_self_action(
                         entity.state = AntEntityState::Wandering(WanderingState::default());
                     },
                 SelfAction::Custom(AntEntityAction::DepositFood) => {
-                    common::log("Food deposited!");
                     unsafe { COLLECTED_FOOD += 1 };
                     entity.state = AntEntityState::Wandering(WanderingState::default());
                 },

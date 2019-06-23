@@ -5,9 +5,9 @@ use wasm_bindgen::prelude::*;
 
 use super::*;
 
-#[wasm_bindgen(module = "./index")]
+#[wasm_bindgen(raw_module = "./loop")]
 extern "C" {
-    fn register_tick_callback(cb: &Closure<FnMut() -> ()>);
+    fn register_tick_callback(cb: &Closure<dyn FnMut() -> ()>);
 }
 
 pub struct JSDriver;
@@ -15,7 +15,7 @@ pub struct JSDriver;
 #[thread_local]
 static mut CLOSURE: *mut Closure<(dyn std::ops::FnMut() + 'static)> = ptr::null_mut();
 
-type OurMiddlewareType = Middleware<
+type OurMiddlewareType = dyn Middleware<
     AntCellState,
     AntEntityState,
     AntMutEntityState,
@@ -61,7 +61,7 @@ impl
             }
         };
 
-        let closure = box Closure::wrap((box cb) as Box<FnMut()>);
+        let closure = box Closure::wrap((box cb) as Box<dyn FnMut()>);
         register_tick_callback(&*closure);
         // hold onto the closure we created
         unsafe { CLOSURE = Box::into_raw(closure) };

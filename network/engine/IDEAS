@@ -1,0 +1,24 @@
+== IDEAS ==
+
+=== Multi-dimensional interconnectivity ===
+
+It's likely that we'll be unable to get a sufficient amount of complexity and interconnectivity with a 2D network of neurons.  Perhaps if we expand this thing into N-dimensionality, we'll be more able to create complex or otherwise interesting networks.
+
+Each layer can connect to some other layer in non-linear ways.  Neurons in one layer will be limited to connecting to neurons that are physically next to them in some other layer, while bridges between layers could be much more complicated in nature.  We can bridge between them non-linearly, or we can keep the linearity and just allow exponential connections between the different layers.
+
+Layer 1 can connect to all other layers, and so can all the other layers as well.  We can limit the actual coordinates that they connect to in the other layers in many different ways:
+ - Only allow connection to the single cell with the same x/y coordinate in the other layer
+ - Allow connections to all nodes in a certain distance from the source node
+ - Allow arbitrary connections to arbitrary nodes, perhaps only a single node.  These connections could be rare, serving as tunnels through which different regions of layers could be joined and communicate.
+
+For the purposes of this visualization, I think it would be cool to have different colors for each layer and overlay them on top of each other.  Keeping it narrow to like 3-5 layers and keeping the colors pretty similar so that they layer well sounds like a good plan.
+
+==== Visualization ===
+
+I'd like for the charge of individual cells to coorespond to the intensity of the pixels on which they lay.  The different neurons on different layers will compose, producing a single 2D visualization.
+
+The charge will propegate rather slowly; the tick rate of the universe can be slower than max capacity to allow the way in which these signals propegate and dissipate to be seen and analyzed.
+
+We'll use the `react-control-panel` controls just like the ants sim.
+
+I'm hyped.

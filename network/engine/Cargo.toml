@@ -1,0 +1,16 @@
+[package]
+authors = ["Casey Primozic <me@ameo.link>"]
+edition = "2018"
+name = "engine"
+version = "0.1.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wasm-bindgen = "0.2.47"
+common = { path="../../common" }
+log = "0.4.6"
+wasm-logger = "0.1.5"
+minutiae = { version = ">=0.12.2", features = ["emscripten"] }
+uuid = "0.7.4"

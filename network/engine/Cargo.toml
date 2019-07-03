@@ -10,7 +10,11 @@ crate-type = ["cdylib"]
 [dependencies]
 wasm-bindgen = "0.2.47"
 common = { path="../../common" }
+sketches-util = { path = "../../util" }
 log = "0.4.6"
 wasm-logger = "0.1.5"
 minutiae = { version = ">=0.12.2", features = ["emscripten"] }
 uuid = "0.7.4"
+noise = "0.5.1"
+rand = { git = "https://github.com/rust-random/rand.git", rev="266cee2b74aeb0e3a89e5fc5c11b6ed475355a07" }
+rand_distr = { git = "https://github.com/rust-random/rand.git", rev="266cee2b74aeb0e3a89e5fc5c11b6ed475355a07" }

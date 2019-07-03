@@ -1,0 +1,12 @@
+[package]
+name = "sketches-util"
+version = "0.1.0"
+authors = ["Casey Primozic <me@ameo.link>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rand = { git = "https://github.com/rust-random/rand.git", rev="266cee2b74aeb0e3a89e5fc5c11b6ed475355a07" }
+rand_pcg = { git = "https://github.com/rust-random/rand.git", rev="266cee2b74aeb0e3a89e5fc5c11b6ed475355a07" }
+rand_core = { git = "https://github.com/rust-random/rand.git", rev="266cee2b74aeb0e3a89e5fc5c11b6ed475355a07" }

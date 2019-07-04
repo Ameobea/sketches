@@ -27,7 +27,7 @@ Please note that there is a library pulled in by the Rust part by default (`/com
 
 ## Directory Structure
 
-The directory is mostly split into two parts: the Rust part (`engine` directory) and the TypeScript part (`src` directory). All of the code that gets compiled into Wasm goes in the `engine/src/` directory and gets called from `src/index.ts`.
+The directory is mostly split into two parts: the Rust part (`engine` directory) and the TypeScript part (`src` directory). All of the code that gets compiled into Wasm goes in the `engine/src/` directory and gets called from `src/index.tsx`.
 
 ### Config Files
 

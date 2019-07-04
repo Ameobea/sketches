@@ -2,13 +2,15 @@
   "name": "sketch",
   "version": "0.1.0",
   "description": "A WebAssembly sketch",
-  "main": "src/index.ts",
+  "main": "src/index.tsx",
   "repository": "https://github.com/Ameobea/sketches",
   "author": "Casey Primozic <me@ameo.link>",
   "devDependencies": {
+    "babel-eslint": "^10.0.2",
     "handlebars": "^4.0.11",
     "handlebars-loader": "^1.7.0",
     "html-webpack-plugin": "^4.0.0-alpha",
+    "raw-loader": "^2.0.0",
     "ts-loader": "^4.4.2",
     "typescript": "^2.9.2",
     "webpack": "^4.19.0",
@@ -19,5 +21,9 @@
     "start": "webpack-dev-server",
     "build": "rm -rf dist/* && webpack --config webpack.prod.js"
   },
-  "dependencies": {}
+  "dependencies": {
+    "react": "^16.8.6",
+    "react-control-panel": "^0.4.6",
+    "react-dom": "^16.8.6"
+  }
 }

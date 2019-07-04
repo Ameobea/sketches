@@ -71,7 +71,21 @@ fn calc_color(
     entity_indexes: &[usize],
     entity_container: &EntityContainer<NetworkCellState, NetworkEntityState, NetworkMutEntityState>,
 ) -> [u8; 4] {
-    unimplemented!();
+    if entity_indexes.is_empty() {
+        return [0; 4];
+    }
+
+    let activation_threshold = match unsafe { entity_container.get(entity_indexes[0]) }.state {
+        NetworkEntityState::Neuron {
+            activation_threshold,
+            ..
+        } => activation_threshold,
+    };
+
+    let val = sketches_util::math::sigmoid(activation_threshold / 1_000_000.0);
+    let val = val * 255.0;
+    let val = val as u8;
+    [val, val, val, 255]
 }
 
 pub fn init_minutiae() {
@@ -79,6 +93,27 @@ pub fn init_minutiae() {
     conf.size = UNIVERSE_SIZE;
 
     let engine: Box<OurEngineType> = Box::new(engine::NetworkEngine);
+
+    let universe: NetworkUniverse = Universe2D::new(conf, &mut NetworkUniverseGenerator);
+    let driver = JSDriver {
+        register_tick_callback,
+    };
+    driver.init(
+        universe,
+        engine,
+        vec![Box::new(CanvasRenderer::new(
+            UNIVERSE_SIZE as usize,
+            calc_color,
+            canvas_render,
+        ))],
+    )
+}
+
+#[wasm_bindgen]
+pub fn init_universe() {
+    let mut conf = UniverseConf::default();
+    conf.size = UNIVERSE_SIZE;
+    let engine: Box<OurEngineType> = Box::new(NetworkEngine);
 
     let universe: NetworkUniverse = Universe2D::new(conf, &mut NetworkUniverseGenerator);
     let driver = JSDriver {

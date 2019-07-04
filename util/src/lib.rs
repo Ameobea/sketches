@@ -10,8 +10,10 @@ pub mod math;
 #[thread_local]
 static mut RNG: Pcg32 = unsafe { mem::transmute(0u128) };
 
-pub fn reinit_rng() {
-    *rng() = unsafe { mem::transmute((-42234i32, 1991u32, -234i32, 44444u32)) };
+pub fn reinit_rng(seed: Option<u128>) {
+    *rng() = seed
+        .map(|seed| unsafe { mem::transmute(seed) })
+        .unwrap_or(Pcg32::new(0xcafef00dd15ea5e5, 0xa02bdbf7bb3c0a7));
     rng().gen::<u32>();
     rng().gen::<u32>();
 }

@@ -1,7 +1,7 @@
 use minutiae::{prelude::*, universe::Universe2DConf, util};
-use noise::{Billow, NoiseFn, Point2, Seedable};
+use noise::{Billow, NoiseFn, Seedable};
 use rand::Rng;
-use rand_distr::{Distribution, Gamma};
+use rand_distr::{Distribution, Exp};
 use sketches_util::rng;
 
 use super::*;
@@ -25,12 +25,13 @@ impl Generator<NetworkCellState, NetworkEntityState, NetworkMutEntityState>
             UNIVERSE_SIZE as usize
         ];
 
-        let mut entities = Vec::with_capacity(UNIVERSE_SIZE as usize);
-        for _ in 0..UNIVERSE_SIZE {
+        let mut entities = Vec::with_capacity(UNIVERSE_SIZE as usize * UNIVERSE_SIZE as usize);
+        for _ in 0..(UNIVERSE_SIZE * UNIVERSE_SIZE) {
             entities.push(Vec::new());
         }
 
-        for _ in 0..10 {
+        for iter in 0..10 {
+            info!("iter: {}", iter);
             // Generate some noise.  For each cell that exceeds some bound, we create an entity there if
             // one doesn't exist.  If it does, we increase its values.
             let mut noise_fn = Billow::new();
@@ -40,11 +41,11 @@ impl Generator<NetworkCellState, NetworkEntityState, NetworkMutEntityState>
             noise_fn.persistence = 0.36;
             noise_fn = noise_fn.set_seed(rng().gen());
 
-            let cutoff = 0.8;
-            let distr = Gamma::new(2.0, 5.0).unwrap();
-            for i in 0..(UNIVERSE_SIZE as usize) {
+            let cutoff = 0.7;
+            let distr = Exp::new(1.298342).unwrap();
+            for i in 0..(UNIVERSE_SIZE as usize * UNIVERSE_SIZE as usize) {
                 let (x, y) = util::get_coords(i, UNIVERSE_SIZE as usize);
-                let val: f64 = NoiseFn::get(&noise_fn, [x as f64, y as f64]);
+                let val: f64 = NoiseFn::get(&noise_fn, [x as f64 * 5., y as f64 * 5.]).abs();
 
                 if val >= cutoff {
                     if entities[i].is_empty() {

@@ -33,7 +33,8 @@ impl Generator<NetworkCellState, NetworkEntityState, NetworkMutEntityState>
         let cutoff = 0.55;
         let scale_factor = 0.01;
         let multiplier = 100_000.0;
-        let gen_iters = 8;
+        let gen_iters = 18;
+        let initial_charge = 100_000_000.;
 
         for iter in 0..gen_iters {
             info!("iter: {}", iter);
@@ -41,17 +42,20 @@ impl Generator<NetworkCellState, NetworkEntityState, NetworkMutEntityState>
             // one doesn't exist.  If it does, we increase its values.
             let mut noise_fn = Billow::new();
             noise_fn.octaves = 5;
-            noise_fn.frequency = 2.0;
+            noise_fn.frequency = 1.0;
             noise_fn.lacunarity = 1.5;
             noise_fn.persistence = 0.36;
-            noise_fn = noise_fn.set_seed(rng().gen());
+            noise_fn = noise_fn.set_seed(rng().gen_range(0, 4_000_000_000));
 
             let distr = Exp::new(1.298342).unwrap();
             for i in 0..(UNIVERSE_SIZE as usize * UNIVERSE_SIZE as usize) {
                 let (x, y) = util::get_coords(i, UNIVERSE_SIZE as usize);
                 let val: f64 = (NoiseFn::get(
                     &noise_fn,
-                    [x as f64 * scale_factor, y as f64 * scale_factor],
+                    [
+                        x as f64 * scale_factor + (iter as f64 * 1000.),
+                        y as f64 * scale_factor + (iter as f64 * 1000.),
+                    ],
                 ) + 1.)
                     / 2.;
 
@@ -63,10 +67,10 @@ impl Generator<NetworkCellState, NetworkEntityState, NetworkMutEntityState>
                                 activation_threshold,
                                 charge: 0.0,
                                 resistances: Directions {
-                                    up: rng().gen_range(0., 1.) * val as f32,
-                                    down: rng().gen_range(0., 1.) * val as f32,
-                                    left: rng().gen_range(0., 1.) * val as f32,
-                                    right: rng().gen_range(0., 1.) * val as f32,
+                                    up: rng().gen_range(0., 0.7) * val as f32,
+                                    down: rng().gen_range(0., 0.7) * val as f32,
+                                    left: rng().gen_range(0., 0.7) * val as f32,
+                                    right: rng().gen_range(0., 0.7) * val as f32,
                                 },
                             },
                             NetworkMutEntityState {},
@@ -80,6 +84,26 @@ impl Generator<NetworkCellState, NetworkEntityState, NetworkMutEntityState>
                         }
                     }
                 }
+            }
+        }
+
+        // Pick a random cell(s) to give some initial charge to
+        for _ in 0..10 {
+            loop {
+                let universe_ix = rng().gen_range(0, UNIVERSE_SIZE * UNIVERSE_SIZE) as usize;
+                let entities_for_coord = &mut entities[universe_ix];
+                if entities_for_coord.is_empty() {
+                    continue;
+                }
+                info!(
+                    "Setting entity at {:?} as that with initial change",
+                    get_coords(universe_ix, UNIVERSE_SIZE as usize)
+                );
+
+                match entities_for_coord[0].state {
+                    NetworkEntityState::Neuron { ref mut charge, .. } => *charge = initial_charge,
+                };
+                break;
             }
         }
 

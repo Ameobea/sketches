@@ -153,7 +153,7 @@ export const createBackgroundTexture = async (textureData: Uint8Array) => {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 };
 
-export const render = (scaleFactor: number, offsetX: number, offsetY: number) => {
+export const render = (scaleFactor: number, _offsetX: number, _offsetY: number) => {
   gl.bindTexture(gl.TEXTURE_2D, localState.backgroundTexture);
 
   // Tell WebGL to use our shader program pair

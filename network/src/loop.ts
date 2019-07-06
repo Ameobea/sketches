@@ -1,6 +1,6 @@
 import { createBackgroundTexture, render } from './webgl';
 
-let canvasScaleFactor = 3;
+let canvasScaleFactor = 2;
 export const setCanvasScaleFactor = (newScaleFactor: number) => {
   canvasScaleFactor = newScaleFactor;
 };
@@ -11,12 +11,10 @@ export const setGraphicsDisplay = (showGraphics: boolean) => {
 };
 
 export const canvas_render = (colors: Uint8Array) => {
-  console.log(colors.length);
   if (!displayGraphics) {
     return;
   }
 
-  const textureWidth = Math.sqrt(colors.length);
   createBackgroundTexture(colors);
   render(canvasScaleFactor, 0, 0);
 };

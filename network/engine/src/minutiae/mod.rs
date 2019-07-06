@@ -56,7 +56,10 @@ pub enum NetworkCellAction {}
 impl CellAction<NetworkCellState> for NetworkCellAction {}
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum NetworkEntityAction {}
+pub enum NetworkEntityAction {
+    IncCharge(f32),
+    SetCharge(f32),
+}
 
 impl EntityAction<NetworkCellState, NetworkEntityState> for NetworkEntityAction {}
 
@@ -68,8 +71,20 @@ impl MutEntityState for NetworkMutEntityState {}
 pub type NetworkOwnedAction =
     OwnedAction<NetworkCellState, NetworkEntityState, NetworkCellAction, NetworkEntityAction>;
 
+fn mix_colors(color1: [u8; 4], weight1: f32, color2: [u8; 4], weight2: f32) -> [u8; 4] {
+    [
+        (color1[0] as f32 * weight1 + color2[0] as f32 * weight2) as u8,
+        (color1[1] as f32 * weight1 + color2[1] as f32 * weight2) as u8,
+        (color1[2] as f32 * weight1 + color2[2] as f32 * weight2) as u8,
+        (color1[2] as f32 * weight1 + color2[2] as f32 * weight2) as u8,
+    ]
+}
+
+const ACTIVE_COLOR: [u8; 4] = [66, 135, 245, 255];
+const CHARGE_CAP: f32 = 1_000.;
+
 fn calc_color(
-    cell: &Cell<NetworkCellState>,
+    _cell: &Cell<NetworkCellState>,
     entity_indexes: &[usize],
     entity_container: &EntityContainer<NetworkCellState, NetworkEntityState, NetworkMutEntityState>,
 ) -> [u8; 4] {
@@ -77,17 +92,31 @@ fn calc_color(
         return [0; 4];
     }
 
-    let activation_threshold = match unsafe { entity_container.get(entity_indexes[0]) }.state {
+    match unsafe { entity_container.get(entity_indexes[0]) }.state {
         NetworkEntityState::Neuron {
             activation_threshold,
+            charge,
             ..
-        } => activation_threshold,
-    };
+        } => {
+            let charge_ratio = (charge / CHARGE_CAP).min(1.0);
+            let val = activation_threshold / 1_000_000.0;
+            let val = val * 255.0;
+            let val = val as u8;
+            let base_color = [val, val, val, 255];
 
-    let val = activation_threshold / 1_000_000.0;
-    let val = val * 255.0;
-    let val = val as u8;
-    [val, val, val, 255]
+            mix_colors(base_color, 1. - charge_ratio, ACTIVE_COLOR, charge_ratio)
+
+            // if charge > 0. {
+            //     let val = (charge / 1_000_000.0).min(1.0);
+            //     let val = val * 255.0;
+            //     let val = val as u8;
+            //     // info!("{}", val);
+            //     [val, val, val, 255]
+            // } else {
+            //     [254, 44, 44, 255]
+            // }
+        }
+    }
 }
 
 pub fn init_minutiae() {

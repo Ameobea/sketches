@@ -1,25 +1,23 @@
 <!DOCTYPE html>
 <html>
+  <head>
+    <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
+    <title>{{ htmlWebpackPlugin.options.title }}</title>
+    <style>
+      body {
+        background-color: rgb(0, 0, 0);
+      }
 
-<head>
-  <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
-  <title>{{ htmlWebpackPlugin.options.title }}</title>
-  <style>
-    body {
-      background-color: rgb(0, 0, 0);
-    }
+      #canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
+    </style>
+  </head>
 
-    #canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-    }
-  </style>
-</head>
-
-<body>
-  <canvas id="canvas" width="800" height="800"></canvas>
-  <div id="react-root"></div>
-</body>
-
+  <body>
+    <canvas id="canvas" width="1600" height="1600"></canvas>
+    <div id="react-root"></div>
+  </body>
 </html>

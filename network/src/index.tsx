@@ -2,14 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom';
 
 import UI from './ui';
-import {
-  getIntervalHandle,
-  pause,
-  resume,
-  doTick,
-  setGraphicsDisplay,
-  getDisplayGraphics,
-} from './loop';
+import { pause, resume, setGraphicsDisplay, getDisplayGraphics } from './loop';
 import { initWebGL } from './webgl';
 
 const wasm = import('./engine');
@@ -48,5 +41,4 @@ wasm.then(engine => {
 
   const root = document.getElementById('react-root')!;
   ReactDOM.render(<UI buttons={buttons} />, root);
-  setInterval(pause, 100);
 });

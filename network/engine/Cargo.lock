@@ -162,7 +162,7 @@ dependencies = [
  "common 0.2.0",
  "console_error_panic_hook 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "minutiae 0.12.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "minutiae 0.12.0",
  "noise 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.7.0 (git+https://github.com/rust-random/rand.git?rev=266cee2b74aeb0e3a89e5fc5c11b6ed475355a07)",
  "rand_distr 0.2.1 (git+https://github.com/rust-random/rand.git?rev=266cee2b74aeb0e3a89e5fc5c11b6ed475355a07)",
@@ -323,8 +323,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "minutiae"
-version = "0.12.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
+version = "0.12.0"
 dependencies = [
  "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "gif 0.9.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -921,7 +920,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum lzw 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)" = "7d947cbb889ed21c2a84be6ffbaebf5b4e0f4340638cba0444907e38b56be084"
 "checksum memchr 2.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "2efc7bc57c883d4a4d6e3246905283d8dae951bb3bd32f49d6ef297f546e1c39"
 "checksum memoffset 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "0f9dc261e2b62d7a622bf416ea3c5245cdd5d9a7fcc428c0d06804dfce1775b3"
-"checksum minutiae 0.12.2 (registry+https://github.com/rust-lang/crates.io-index)" = "f34b1355ad777905122e6d9c58876b1241d613d2be1d4d97d61d2bcfb604e065"
 "checksum nodrop 0.1.13 (registry+https://github.com/rust-lang/crates.io-index)" = "2f9667ddcc6cc8a43afc9b7917599d7216aa09c463919ea32c59ed6cac8bc945"
 "checksum noise 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)" = "9a3a34d4f8a31f95919b7ead9f5b60afb9bda0cae98b9219432ffaa6f00b0141"
 "checksum nom 4.2.3 (registry+https://github.com/rust-lang/crates.io-index)" = "2ad2a91a8e869eeb30b9cb3119ae87773a8f4ae617f41b1eb9c154b2905f7bd6"

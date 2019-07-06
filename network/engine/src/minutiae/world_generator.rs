@@ -22,7 +22,7 @@ impl Generator<NetworkCellState, NetworkEntityState, NetworkMutEntityState>
             Cell {
                 state: NetworkCellState::Empty
             };
-            UNIVERSE_SIZE as usize
+            UNIVERSE_SIZE as usize * UNIVERSE_SIZE as usize
         ];
 
         let mut entities = Vec::with_capacity(UNIVERSE_SIZE as usize * UNIVERSE_SIZE as usize);
@@ -30,29 +30,37 @@ impl Generator<NetworkCellState, NetworkEntityState, NetworkMutEntityState>
             entities.push(Vec::new());
         }
 
-        for iter in 0..10 {
+        let cutoff = 0.55;
+        let scale_factor = 0.01;
+        let multiplier = 100_000.0;
+        let gen_iters = 8;
+
+        for iter in 0..gen_iters {
             info!("iter: {}", iter);
             // Generate some noise.  For each cell that exceeds some bound, we create an entity there if
             // one doesn't exist.  If it does, we increase its values.
             let mut noise_fn = Billow::new();
             noise_fn.octaves = 5;
-            noise_fn.frequency = 3.0;
+            noise_fn.frequency = 2.0;
             noise_fn.lacunarity = 1.5;
             noise_fn.persistence = 0.36;
             noise_fn = noise_fn.set_seed(rng().gen());
 
-            let cutoff = 0.7;
             let distr = Exp::new(1.298342).unwrap();
             for i in 0..(UNIVERSE_SIZE as usize * UNIVERSE_SIZE as usize) {
                 let (x, y) = util::get_coords(i, UNIVERSE_SIZE as usize);
-                let val: f64 = NoiseFn::get(&noise_fn, [x as f64 * 5., y as f64 * 5.]).abs();
+                let val: f64 = (NoiseFn::get(
+                    &noise_fn,
+                    [x as f64 * scale_factor, y as f64 * scale_factor],
+                ) + 1.)
+                    / 2.;
 
                 if val >= cutoff {
                     if entities[i].is_empty() {
+                        let activation_threshold = distr.sample(rng()) * multiplier;
                         entities[i].push(Entity::new(
                             NetworkEntityState::Neuron {
-                                activation_threshold: rng()
-                                    .gen_range(0., distr.sample(rng()) * 200_000.0),
+                                activation_threshold,
                                 charge: 0.0,
                                 resistances: Directions {
                                     up: rng().gen_range(0., 1.) * val as f32,
@@ -68,10 +76,7 @@ impl Generator<NetworkCellState, NetworkEntityState, NetworkMutEntityState>
                             NetworkEntityState::Neuron {
                                 ref mut activation_threshold,
                                 ..
-                            } => {
-                                *activation_threshold +=
-                                    rng().gen_range(0., distr.sample(rng()) * 50_000.0)
-                            }
+                            } => *activation_threshold += distr.sample(rng()) * multiplier,
                         }
                     }
                 }

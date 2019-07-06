@@ -11,6 +11,7 @@ export const setGraphicsDisplay = (showGraphics: boolean) => {
 };
 
 export const canvas_render = (colors: Uint8Array) => {
+  console.log(colors.length);
   if (!displayGraphics) {
     return;
   }

@@ -13,7 +13,6 @@ extern crate log;
 #[macro_use]
 extern crate serde_derive;
 
-use std::mem;
 use std::panic;
 
 use wasm_bindgen::prelude::*;
@@ -25,12 +24,12 @@ pub mod util;
 
 #[wasm_bindgen]
 pub fn init() {
+    sketches_util::reinit_rng(None);
+
     panic::set_hook(Box::new(console_error_panic_hook::hook));
     wasm_logger::init(wasm_logger::Config::new(log::Level::Debug));
     set_active_conf(Conf {});
     crate::minutiae::init_universe();
-    let seed = unsafe { mem::transmute((common::math_random(), common::math_random())) };
-    sketches_util::reinit_rng(Some(seed));
 }
 
 #[wasm_bindgen]

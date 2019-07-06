@@ -13,7 +13,8 @@ common = { path="../../common" }
 sketches-util = { path = "../../util" }
 log = "0.4.6"
 wasm-logger = "0.1.5"
-minutiae = { version = ">=0.12.2", features = ["emscripten"] }
+# minutiae = { version = ">=0.12.2", features = ["emscripten"] }
+minutiae = { features = ["emscripten"], path="../../../minutiae/minutiae" }
 uuid = "0.7.4"
 noise = "0.5.1"
 rand = { git = "https://github.com/rust-random/rand.git", rev="266cee2b74aeb0e3a89e5fc5c11b6ed475355a07" }

@@ -2,8 +2,10 @@ use wasm_bindgen::prelude::*;
 
 use minutiae::{
     emscripten::{driver::JSDriver, CanvasRenderer},
+    engine::{iterator::SerialEntityIterator, serial::SerialEngine},
     prelude::*,
     universe::Universe2D,
+    util,
 };
 
 pub mod engine;
@@ -82,7 +84,7 @@ fn calc_color(
         } => activation_threshold,
     };
 
-    let val = sketches_util::math::sigmoid(activation_threshold / 1_000_000.0);
+    let val = activation_threshold / 1_000_000.0;
     let val = val * 255.0;
     let val = val as u8;
     [val, val, val, 255]
@@ -109,6 +111,56 @@ pub fn init_minutiae() {
     )
 }
 
+struct DebugMiddleware;
+
+impl
+    Middleware<
+        NetworkCellState,
+        NetworkEntityState,
+        NetworkMutEntityState,
+        NetworkCellAction,
+        NetworkEntityAction,
+        NetworkUniverse,
+        Box<
+            dyn SerialEngine<
+                NetworkCellState,
+                NetworkEntityState,
+                NetworkMutEntityState,
+                NetworkCellAction,
+                NetworkEntityAction,
+                SerialEntityIterator<NetworkCellState, NetworkEntityState>,
+                NetworkUniverse,
+            >,
+        >,
+    > for DebugMiddleware
+{
+    fn after_render(&mut self, universe: &mut NetworkUniverse) {
+        for y in 0..(UNIVERSE_SIZE as usize) {
+            let mut out = String::new();
+            for x in 0..(UNIVERSE_SIZE as usize) {
+                let entity_indices = universe.entities.get_entities_at(util::get_index(
+                    x,
+                    y,
+                    UNIVERSE_SIZE as usize,
+                ));
+                if entity_indices.is_empty() {
+                    out.push_str("----, ");
+                    continue;
+                }
+                let entity_index = entity_indices[0];
+                let entity_state = unsafe { &universe.entities.get(entity_index).state };
+                match entity_state {
+                    NetworkEntityState::Neuron {
+                        activation_threshold,
+                        ..
+                    } => out.push_str(&format!("{:.*}, ", 2, activation_threshold)),
+                }
+            }
+            info!("{}", out);
+        }
+    }
+}
+
 #[wasm_bindgen]
 pub fn init_universe() {
     let mut conf = UniverseConf::default();
@@ -122,10 +174,13 @@ pub fn init_universe() {
     driver.init(
         universe,
         engine,
-        vec![Box::new(CanvasRenderer::new(
-            UNIVERSE_SIZE as usize,
-            calc_color,
-            canvas_render,
-        ))],
-    )
+        vec![
+            Box::new(CanvasRenderer::new(
+                UNIVERSE_SIZE as usize,
+                calc_color,
+                canvas_render,
+            )),
+            // Box::new(DebugMiddleware),
+        ],
+    );
 }

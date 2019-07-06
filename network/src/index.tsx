@@ -48,4 +48,5 @@ wasm.then(engine => {
 
   const root = document.getElementById('react-root')!;
   ReactDOM.render(<UI buttons={buttons} />, root);
+  setInterval(pause, 100);
 });

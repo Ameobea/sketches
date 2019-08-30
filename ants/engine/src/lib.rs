@@ -17,6 +17,8 @@ extern crate uuid;
 extern crate wasm_bindgen;
 #[macro_use]
 extern crate serde_derive;
+#[macro_use]
+extern crate log;
 
 use std::mem;
 
@@ -291,7 +293,7 @@ pub fn set_user_conf(conf_json: String) {
     let conf: UserConf = match serde_json::from_str(&conf_json) {
         Ok(conf) => conf,
         Err(err) => {
-            common::log(format!("Error parsing provided user conf JSON: {:?}", err));
+            error!("Error parsing provided user conf JSON: {:?}", err);
             return;
         },
     };
@@ -314,7 +316,14 @@ pub fn init_universe() {
 
 #[wasm_bindgen]
 pub fn init() {
-    common::set_panic_hook(); // this will trigger `console.error` to be called during panics
+    let log_level = if cfg!(debug_assertions) {
+        log::Level::Trace
+    } else {
+        log::Level::Info
+    };
+    wasm_logger::init(wasm_logger::Config::new(log_level));
+
+    console_error_panic_hook::set_once(); // this will trigger `console.error` to be called during panics
     reinit_rng();
 
     init_universe();

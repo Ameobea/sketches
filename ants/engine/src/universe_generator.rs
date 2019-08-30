@@ -49,10 +49,7 @@ fn gen_terrain(
             // Avoid infinite loops of being unable to place
             iters += 1;
             if iters > MAX_PLACEMENT_ITERS {
-                common::warn(format!(
-                    "Bailed out generating cells with state: {:?}",
-                    state
-                ));
+                warn!("Bailed out generating cells with state: {:?}", state);
                 break;
             }
 

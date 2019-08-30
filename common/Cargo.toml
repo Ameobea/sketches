@@ -5,5 +5,6 @@ authors = ["Casey Primozic <me@ameo.link>"]
 edition = "2018"
 
 [dependencies]
+wasm-bindgen = { git = "https://github.com/rustwasm/wasm-bindgen.git", rev = "fb0bbc00" }
 uuid = "0.7.4"
-wasm-bindgen = "0.2.47"
+console_error_panic_hook = { git = "https://github.com/Ameobea/console_error_panic_hook.git" }

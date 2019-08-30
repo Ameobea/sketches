@@ -63,7 +63,7 @@ fn exec_cell_action(
                             Some((mut entity, _)) =>
                                 entity.state =
                                     AntEntityState::ReturningToNestWithFood { last_diff: (0, 0) },
-                            None => common::warn(
+                            None => warn!(
                                 "Attempted to mark entity as returning to nest, but it was \
                                  deleted?",
                             ),

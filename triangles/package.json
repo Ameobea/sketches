@@ -7,21 +7,21 @@
   "author": "Casey Primozic <me@ameo.link>",
   "devDependencies": {
     "handlebars": "^4.1.2",
-    "handlebars-loader": "^1.7.0",
+    "handlebars-loader": "^1.7.1",
     "html-webpack-plugin": "^4.0.0-alpha",
-    "ts-loader": "^4.4.2",
-    "typescript": "^2.9.2",
-    "webpack": "^4.19.0",
-    "webpack-cli": "^3.1.0",
-    "webpack-dev-server": ">3.1.11"
+    "ts-loader": "^6.0.4",
+    "typescript": "^3.6.2",
+    "webpack": "^4.39.3",
+    "webpack-cli": "^3.3.7",
+    "webpack-dev-server": ">3.8.0"
   },
   "scripts": {
     "start": "webpack-dev-server",
     "build": "rm -rf dist/* && webpack --config webpack.prod.js"
   },
   "dependencies": {
-    "react": "^16.5.2",
-    "react-control-panel": "^0.3.0",
-    "react-dom": "^16.5.2"
+    "react": "^16.9.0",
+    "react-control-panel": "^0.4.6",
+    "react-dom": "^16.9.0"
   }
 }

@@ -8,7 +8,8 @@ version = "0.1.0"
 crate-type = ["cdylib"]
 
 [dependencies]
-wasm-bindgen = "=0.2.47"
+wasm-bindgen = { git = "https://github.com/rustwasm/wasm-bindgen.git", rev = "fb0bbc00" }
+console_error_panic_hook = { git = "https://github.com/Ameobea/console_error_panic_hook.git" }
 uuid = { version = "0.7.1", features = ["v4"] }
 rand = "0.6.1"
 rand_pcg = "0.1.1"
@@ -17,6 +18,8 @@ serde = "1.0.80"
 serde_json = "1.0.33"
 serde_derive = "1.0.80"
 minutiae = "0.11.0"
+wasm-logger = { git = "https://gitlab.com/Ameobea/wasm-logger.git" }
+log = "0.4"
 
 common = { path="../../common" }
 

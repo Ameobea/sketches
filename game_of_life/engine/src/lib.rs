@@ -2,14 +2,15 @@
 
 extern crate common;
 extern crate wasm_bindgen;
+#[macro_use]
+extern crate log;
 
 use std::mem;
 use std::ptr;
 
-use common::error;
 use wasm_bindgen::prelude::*;
 
-#[wasm_bindgen(module = "./index")]
+#[wasm_bindgen(raw_module = "./index")]
 extern "C" {
     pub fn canvasRender(ptr: *const u8);
 }
@@ -135,6 +136,12 @@ fn state() -> &'static mut State {
 /// Called by the JS to initialize the game state before starting the simulation
 #[wasm_bindgen]
 pub fn init() {
+    let log_level = if cfg!(debug_assertions) {
+        log::Level::Trace
+    } else {
+        log::Level::Info
+    };
+    wasm_logger::init(wasm_logger::Config::new(log_level));
     let initial_state = box State::new();
     let initial_state = Box::into_raw(initial_state);
     unsafe { STATE = initial_state as *mut State };
@@ -145,7 +152,7 @@ pub fn init() {
 #[wasm_bindgen]
 pub fn set_pixel(x: usize, y: usize) {
     if x >= BOARD_WIDTH || y >= BOARD_HEIGHT {
-        error(format!("({}, {}) is outside of the board", x, y));
+        error!("({}, {}) is outside of the board", x, y);
         return;
     }
 

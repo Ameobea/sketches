@@ -8,5 +8,7 @@ version = "0.1.0"
 crate-type = ["cdylib"]
 
 [dependencies]
-wasm-bindgen = "0.2.21"
+wasm-bindgen = { git = "https://github.com/rustwasm/wasm-bindgen.git", rev = "fb0bbc00" }
 common = { path="../../common" }
+log = "0.4"
+wasm-logger = { git = "https://gitlab.com/Ameobea/wasm-logger.git" }

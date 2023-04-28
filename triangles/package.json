@@ -6,7 +6,7 @@
   "repository": "https://github.com/Ameobea/sketches",
   "author": "Casey Primozic <me@ameo.link>",
   "devDependencies": {
-    "handlebars": "^4.5.3",
+    "handlebars": "^4.7.7",
     "handlebars-loader": "^1.7.1",
     "html-webpack-plugin": "^4.0.0-alpha",
     "ts-loader": "^6.0.4",
